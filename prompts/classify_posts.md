@@ -32,8 +32,17 @@ You are a classifier for Reddit posts from Claude/LLM-related subreddits. Your j
 
 ## Your Task
 
-Classify the following Reddit posts. Return a JSON array with one object per post:
+Classify the following Reddit posts. Return a JSON array with one object per post.
 
+**IMPORTANT**: Use ONLY these exact category values (case-sensitive):
+- Signal: `technical`, `troubleshooting`, `research_verified`
+- Noise: `mystical`, `unverified_claim`, `engagement_bait`
+- Meta: `community`, `meme`
+- Other: `outlier`
+
+**Do NOT use**: "signal", "noise", "meta" - these are not valid categories!
+
+JSON format:
 ```json
 [
   {
@@ -48,11 +57,12 @@ Classify the following Reddit posts. Return a JSON array with one object per pos
 
 ## Important Rules
 
-1. **Be strict**: If a post makes claims without sources, classify as noise
+1. **Be strict**: If a post makes claims without sources, classify as noise (use `unverified_claim`)
 2. **Confidence scale**: 0.0-1.0 (use 0.9+ for clear cases, 0.5-0.8 for ambiguous)
 3. **Red flags**: Include ALL applicable red flags, not just the most obvious
 4. **Reasoning**: Keep it brief (1-2 sentences) focusing on key indicators
 5. **Technical posts**: Must have actionable content (code, prompts, clear steps)
+6. **Use specific categories**: Never use generic terms like "signal" or "noise" - always use the specific category names listed above
 
 ## Posts to Classify
 
