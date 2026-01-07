@@ -1,7 +1,7 @@
 """Application configuration using pydantic-settings."""
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Anthropic API
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
+
+    # Target subreddits (comma-separated in .env)
+    subreddits: str = "ClaudeAI,Claude,ClaudeCode,ClaudeExplorers"
 
     # Behavior
     default_batch_size: int = 20  # Posts per Claude API request
@@ -38,6 +41,10 @@ class Settings(BaseSettings):
     def is_reddit_authenticated(self) -> bool:
         """Check if Reddit credentials are configured."""
         return bool(self.reddit_client_id and self.reddit_client_secret)
+
+    def get_subreddit_list(self) -> List[str]:
+        """Parse and return list of subreddits from comma-separated string."""
+        return [s.strip() for s in self.subreddits.split(",") if s.strip()]
 
     def ensure_directories(self) -> None:
         """Create output directories if they don't exist."""

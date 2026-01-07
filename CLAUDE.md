@@ -191,7 +191,7 @@ reddit-analyzer/
 ├── .env                        # API credentials (gitignored)
 ├── .env.example               # Template for credentials
 │
-├── src/reddit_analyzer/
+├── src/claude_redditor/
 │   ├── cli.py                 # Typer CLI entry point
 │   ├── config.py              # pydantic-settings configuration
 │   ├── core/
@@ -260,4 +260,4 @@ dependencies = [
 ]
 ```
 
-Entry point: `reddit-analyzer = "reddit_analyzer.cli:app"`
+Entry point: `reddit-analyzer = "claude_redditor.cli:app"`

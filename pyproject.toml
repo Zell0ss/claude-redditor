@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-reddit-analyzer = "reddit_analyzer.cli:app"
+reddit-analyzer = "claude_redditor.cli:app"
 
 [build-system]
 requires = ["setuptools>=61.0"]

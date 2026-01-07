@@ -155,7 +155,7 @@ Cache    Cache
 
 ```
 reddit-analyzer/
-├── src/reddit_analyzer/
+├── src/claude_redditor/
 │   ├── core/
 │   │   ├── models.py      # RedditPost, Classification, AnalysisReport
 │   │   └── enums.py       # CategoryEnum, red flag patterns
