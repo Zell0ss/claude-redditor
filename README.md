@@ -48,13 +48,27 @@ REDDIT_CLIENT_SECRET=your_client_secret
 
 Get Reddit credentials at: https://www.reddit.com/prefs/apps (create "script" type app)
 
-### 3. Test the Scraper
+### 3. Usage
 
 ```bash
-python test_claude_subreddit.py
-```
+# Analyze a single subreddit (simple)
+./reddit-analyzer scan ClaudeAI
 
-This will fetch 10 posts from r/ClaudeAI and display them in a table.
+# Analyze with options
+./reddit-analyzer scan ClaudeAI --limit 50 --sort top --time-filter week
+
+# Analyze all configured subreddits
+./reddit-analyzer scan all --limit 30 --export-json
+
+# Compare multiple subreddits
+./reddit-analyzer compare --limit 20
+
+# Show configuration
+./reddit-analyzer config
+
+# Show version
+./reddit-analyzer version
+```
 
 ## Project Status
 
@@ -65,23 +79,73 @@ This will fetch 10 posts from r/ClaudeAI and display them in a table.
 - [x] Dual-mode scraper (RSS/PRAW)
 - [x] Test with r/ClaudeAI
 
-**Phase 2: Classification** 🚧 TODO
-- [ ] Classification prompt
-- [ ] Classifier with batch processing (20 posts per request)
-- [ ] Red flags detection
-- [ ] Cache management
+**Phase 2: Classification** ✅ COMPLETE
+- [x] Classification prompt with detailed rules
+- [x] Classifier with batch processing (20 posts per request)
+- [x] Red flags detection (6 patterns)
+- [x] Pydantic validation and error handling
 
-**Phase 3: Analysis & Output** 🚧 TODO
-- [ ] Analysis engine (metrics, signal ratio)
-- [ ] Reporter (Rich terminal output)
-- [ ] JSON/HTML export
-- [ ] CLI commands (Typer)
+**Phase 3: Analysis & Output** ✅ COMPLETE
+- [x] Analysis engine (metrics, signal ratio, health grades)
+- [x] Reporter (Rich terminal output with tables and charts)
+- [x] JSON export functionality
+- [x] CLI commands (Typer)
 
-**Phase 4: Polish** 🚧 TODO
+**Phase 4: Polish** 🚧 OPTIONAL
 - [ ] Error handling and retries
 - [ ] Progress indicators
 - [ ] Tests with fixtures
 - [ ] Documentation
+
+## CLI Commands
+
+### `scan` - Analyze a Subreddit
+
+```bash
+# Basic usage
+./reddit-analyzer scan ClaudeAI
+
+# With options
+./reddit-analyzer scan ClaudeAI \
+  --limit 100 \
+  --sort top \
+  --time-filter month \
+  --export-json
+
+# Analyze all configured subreddits
+./reddit-analyzer scan all --limit 30
+```
+
+**Options:**
+- `--limit, -l`: Number of posts (default: 50)
+- `--sort, -s`: Sort method (hot, new, top, rising)
+- `--time-filter, -t`: Time filter for 'top' (hour, day, week, month, year, all)
+- `--export-json`: Export report to JSON
+- `--no-details`: Show summary only
+
+### `compare` - Compare Subreddits
+
+Compare signal ratios across all configured subreddits:
+
+```bash
+./reddit-analyzer compare --limit 20
+```
+
+Shows a comparison table with signal ratios and health grades.
+
+### `config` - Show Configuration
+
+View current settings:
+
+```bash
+./reddit-analyzer config
+```
+
+### `version` - Version Info
+
+```bash
+./reddit-analyzer version
+```
 
 ## Architecture
 
