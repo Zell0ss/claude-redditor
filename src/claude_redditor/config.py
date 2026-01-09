@@ -20,11 +20,19 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
     # Target subreddits (comma-separated in .env)
-    subreddits: str = "ClaudeAI,Claude,ClaudeCode,ClaudeExplorers"
+    subreddits: str = ""
+
+    # MariaDB/MySQL (for caching classifications)
+    mysql_host: str = "localhost"
+    mysql_port: int = 3306
+    mysql_user: str = ""
+    mysql_password: str = ""
+    mysql_database: str = "reddit_analyzer"
 
     # Behavior
     default_batch_size: int = 20  # Posts per Claude API request
     cache_ttl_hours: int = 24
+    debug: bool = False  # Enable SQL query logging
 
     # Paths
     output_dir: Path = Path("outputs")
@@ -42,8 +50,14 @@ class Settings(BaseSettings):
         """Check if Reddit credentials are configured."""
         return bool(self.reddit_client_id and self.reddit_client_secret)
 
+    def is_mysql_configured(self) -> bool:
+        """Check if MySQL credentials are configured."""
+        return bool(self.mysql_user and self.mysql_password)
+
     def get_subreddit_list(self) -> List[str]:
         """Parse and return list of subreddits from comma-separated string."""
+        if not self.subreddits:
+            return []
         return [s.strip() for s in self.subreddits.split(",") if s.strip()]
 
     def ensure_directories(self) -> None:

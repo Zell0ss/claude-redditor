@@ -1,11 +1,14 @@
 """Analysis engine for calculating metrics from classified posts."""
 
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
 from collections import Counter
 from datetime import datetime
+import logging
 
 from .core.models import RedditPost, Classification, AnalysisReport, PostSummary
 from .core.enums import CategoryEnum
+
+logger = logging.getLogger(__name__)
 
 
 class PostAnalyzer:
@@ -211,6 +214,198 @@ class PostAnalyzer:
             return "F"
 
 
+class CachedAnalysisEngine:
+    """
+    Analysis engine WITH MariaDB cache support.
+    Caches classifications to avoid re-processing posts.
+    """
+
+    def __init__(self, config):
+        """
+        Initialize cached analysis engine.
+
+        Args:
+            config: Settings object with MySQL configuration
+        """
+        self.config = config
+        self.analyzer = PostAnalyzer()
+
+        # Only initialize DB if MySQL is configured
+        if config.is_mysql_configured():
+            from .db.connection import DatabaseConnection
+            from .db.repository import Repository
+
+            self.db = DatabaseConnection(config)
+            self.repo = Repository(self.db)
+            self.cache_enabled = True
+            logger.info("Cache enabled (MariaDB)")
+        else:
+            self.db = None
+            self.repo = None
+            self.cache_enabled = False
+            logger.info("Cache disabled (no MySQL credentials)")
+
+    def analyze_with_cache(
+        self,
+        posts: List[Dict],
+        classifier,
+        model_version: Optional[str] = None
+    ) -> Tuple[List[Classification], Dict]:
+        """
+        Analyze posts using cache.
+
+        Flow:
+        1. Check cache for post_ids
+        2. Classify only posts not in cache
+        3. Save new classifications
+        4. Return all (cached + new)
+
+        Args:
+            posts: List of post dicts (from scraper)
+            classifier: PostClassifier instance
+            model_version: Claude model version (default: from config)
+
+        Returns:
+            (classifications, cache_stats)
+        """
+        if not posts:
+            return [], {'total': 0, 'cached': 0, 'new': 0, 'cache_hit_rate': 0}
+
+        model_version = model_version or self.config.anthropic_model
+
+        # If cache disabled, classify everything
+        if not self.cache_enabled:
+            logger.info(f"Classifying {len(posts)} posts (cache disabled)")
+            # Convert dicts to RedditPost objects
+            posts_to_classify = [
+                RedditPost(
+                    id=p['id'],
+                    title=p['title'],
+                    selftext=p.get('selftext', ''),
+                    author=p.get('author', '[deleted]'),
+                    score=p.get('score', 0),
+                    num_comments=p.get('num_comments', 0),
+                    created_utc=p.get('created_utc', 0),
+                    url=p.get('url', ''),
+                    subreddit=p.get('subreddit', ''),
+                    flair=p.get('flair')
+                )
+                for p in posts
+            ]
+            classifications = classifier.classify_posts(posts_to_classify)
+            cache_stats = {
+                'total': len(posts),
+                'cached': 0,
+                'new': len(classifications),
+                'cache_hit_rate': 0.0,
+                'api_cost_saved': 0.0
+            }
+            return classifications, cache_stats
+
+        # Extract post IDs
+        post_ids = [p['id'] for p in posts]
+        logger.info(f"Analyzing {len(post_ids)} posts (cache enabled)")
+
+        # Check cache
+        cached_data = self.repo.get_cached_classifications(post_ids)
+        cached_ids = {c['post_id'] for c in cached_data}
+
+        # Convert cached data to Classification objects
+        cached_classifications = []
+        for data in cached_data:
+            cached_classifications.append(
+                Classification(
+                    post_id=data['post_id'],
+                    category=CategoryEnum(data['category']),
+                    confidence=data['confidence'],
+                    red_flags=data['red_flags'],
+                    reasoning=data['reasoning']
+                )
+            )
+
+        # Identify posts to classify
+        to_classify = [p for p in posts if p['id'] not in cached_ids]
+
+        # Classify new posts
+        new_classifications = []
+        if to_classify:
+            logger.info(f"Classifying {len(to_classify)} new posts...")
+            # Convert dicts to RedditPost objects
+            posts_to_classify = [
+                RedditPost(
+                    id=p['id'],
+                    title=p['title'],
+                    selftext=p.get('selftext', ''),
+                    author=p.get('author', '[deleted]'),
+                    score=p.get('score', 0),
+                    num_comments=p.get('num_comments', 0),
+                    created_utc=p.get('created_utc', 0),
+                    url=p.get('url', ''),
+                    subreddit=p.get('subreddit', ''),
+                    flair=p.get('flair')
+                )
+                for p in to_classify
+            ]
+            new_classifications = classifier.classify_posts(posts_to_classify)
+
+            # Save to DB
+            self.repo.save_posts(to_classify)
+
+            # Convert to dicts for saving
+            new_classifications_dicts = [
+                {
+                    'post_id': c.post_id,
+                    'category': c.category.value,
+                    'confidence': c.confidence,
+                    'red_flags': c.red_flags,
+                    'reasoning': c.reasoning
+                }
+                for c in new_classifications
+            ]
+            self.repo.save_classifications(new_classifications_dicts, model_version)
+            logger.info(f"Saved {len(new_classifications)} new classifications")
+
+        # Calculate stats
+        cache_stats = {
+            'total': len(posts),
+            'cached': len(cached_classifications),
+            'new': len(new_classifications),
+            'cache_hit_rate': len(cached_classifications) / len(posts) if posts else 0,
+            'api_cost_saved': len(cached_classifications) * 0.001  # ~$0.001 per classification
+        }
+
+        # Combine all classifications
+        all_classifications = cached_classifications + new_classifications
+
+        logger.info(
+            f"Analysis complete: {cache_stats['cached']} cached, "
+            f"{cache_stats['new']} new (hit rate: {cache_stats['cache_hit_rate']:.1%})"
+        )
+
+        return all_classifications, cache_stats
+
+    def save_scan_result(
+        self,
+        subreddit: str,
+        cache_stats: Dict,
+        signal_ratio: float
+    ):
+        """Save scan result to history."""
+        if self.cache_enabled:
+            self.repo.save_scan_history(
+                subreddit=subreddit,
+                posts_fetched=cache_stats['total'],
+                posts_classified=cache_stats['new'],
+                posts_cached=cache_stats['cached'],
+                signal_ratio=signal_ratio * 100  # Convert to percentage
+            )
+
+
 def create_analyzer() -> PostAnalyzer:
     """Factory function to create a PostAnalyzer instance."""
     return PostAnalyzer()
+
+
+def create_cached_engine(config) -> CachedAnalysisEngine:
+    """Factory function to create a CachedAnalysisEngine instance."""
+    return CachedAnalysisEngine(config)

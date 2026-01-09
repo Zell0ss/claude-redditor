@@ -13,7 +13,6 @@ help:
 	@echo "  make dev        - Install in development mode"
 	@echo ""
 	@echo "CLI Commands:"
-	@echo "  make cli        - Recreate CLI wrapper script"
 	@echo "  make scan       - Quick scan of ClaudeAI (5 posts)"
 	@echo "  make compare    - Compare all subreddits (10 posts each)"
 	@echo "  make config     - Show current configuration"
@@ -37,24 +36,6 @@ dev:
 	@echo "Installing in development mode..."
 	pip install -e .
 
-# Recreate CLI wrapper
-cli:
-	@echo "Recreating CLI wrapper script..."
-	@echo '#!/usr/bin/env python3' > reddit-analyzer
-	@echo '"""Wrapper script for reddit-analyzer CLI."""' >> reddit-analyzer
-	@echo '' >> reddit-analyzer
-	@echo 'import sys' >> reddit-analyzer
-	@echo 'from pathlib import Path' >> reddit-analyzer
-	@echo '' >> reddit-analyzer
-	@echo '# Add src to path' >> reddit-analyzer
-	@echo 'sys.path.insert(0, str(Path(__file__).parent / "src"))' >> reddit-analyzer
-	@echo '' >> reddit-analyzer
-	@echo 'from claude_redditor.cli import app' >> reddit-analyzer
-	@echo '' >> reddit-analyzer
-	@echo 'if __name__ == "__main__":' >> reddit-analyzer
-	@echo '    app()' >> reddit-analyzer
-	chmod +x reddit-analyzer
-	@echo "✓ CLI wrapper recreated: ./reddit-analyzer"
 
 # Quick CLI commands (using venv)
 scan:
