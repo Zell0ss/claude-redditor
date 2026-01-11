@@ -54,3 +54,4 @@ previous.md
 # Test files (temporary)
 test_scraper.py
 test_claude_subreddit.py
+backup_*.sql

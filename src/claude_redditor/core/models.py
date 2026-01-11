@@ -23,7 +23,7 @@ class RedditPost:
     flair: Optional[str] = None
 
     @property
-    def truncated_selftext(self, max_length: int = 1000) -> str:
+    def truncated_selftext(self, max_length: int = 5000) -> str:
         """Return selftext truncated to max_length characters for classification."""
         if len(self.selftext) <= max_length:
             return self.selftext

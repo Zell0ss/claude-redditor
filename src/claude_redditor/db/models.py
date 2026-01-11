@@ -11,20 +11,26 @@ from .connection import Base
 
 class RedditPost(Base):
     """
-    Metadata for Reddit posts.
-    Avoids re-fetching from Reddit API.
+    Metadata for posts from multiple sources (Reddit, HackerNews, etc).
+    Table renamed to 'posts' for multi-source support.
     """
-    __tablename__ = 'reddit_posts'
+    __tablename__ = 'posts'
 
-    id = Column(String(20), primary_key=True, comment='Reddit post ID')
-    subreddit = Column(String(100), nullable=False, index=True)
+    id = Column(String(50), primary_key=True, comment='Prefixed post ID (reddit_abc123, hn_8863)')
+    source = Column(
+        Enum('reddit', 'hackernews', name='source_enum'),
+        nullable=False,
+        index=True,
+        comment='Content source'
+    )
+    subreddit = Column(String(100), nullable=True, index=True, comment='Reddit: subreddit name, HN: null')
     title = Column(Text, nullable=False)
     author = Column(String(100))
     score = Column(Integer)
     num_comments = Column(Integer)
     created_utc = Column(BigInteger, index=True, comment='Unix timestamp')
     url = Column(Text)
-    selftext = Column(Text, comment='Truncated to 1000 chars')
+    selftext = Column(Text, comment='Truncated to 5000 chars/MAX_LINES_ARTICLE')
     fetched_at = Column(TIMESTAMP, server_default=func.now())
 
     # Relationship
@@ -59,10 +65,16 @@ class Classification(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     post_id = Column(
-        String(20),
-        ForeignKey('reddit_posts.id', ondelete='CASCADE'),
+        String(50),
+        ForeignKey('posts.id', ondelete='CASCADE'),
         nullable=False,
         unique=True
+    )
+    source = Column(
+        Enum('reddit', 'hackernews', name='source_enum'),
+        nullable=False,
+        index=True,
+        comment='Content source matching the post'
     )
     category = Column(
         Enum(
@@ -97,12 +109,18 @@ class Classification(Base):
 
 class ScanHistory(Base):
     """
-    Scan history for tracking and analytics.
+    Scan history for tracking and analytics (multi-source support).
     """
     __tablename__ = 'scan_history'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    subreddit = Column(String(100), nullable=False, index=True)
+    subreddit = Column(String(100), nullable=True, index=True, comment='Subreddit name (reddit) or "HackerNews" (HN)')
+    source = Column(
+        Enum('reddit', 'hackernews', name='source_enum'),
+        nullable=True,
+        index=True,
+        comment='Content source for this scan'
+    )
     scan_date = Column(TIMESTAMP, server_default=func.now(), index=True)
     posts_fetched = Column(Integer, comment='Total posts from Reddit')
     posts_classified = Column(Integer, comment='New posts classified')

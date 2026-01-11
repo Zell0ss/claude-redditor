@@ -1,36 +1,80 @@
-# Reddit Signal/Noise Analyzer
+# Multi-Source Signal/Noise Analyzer
 
-**Production-ready CLI tool** to analyze Reddit posts from Claude/LLM subreddits, automatically classify them as Signal vs Noise using Claude AI, and generate insightful reports.
+**Production-ready CLI tool** to analyze posts from Reddit and HackerNews, automatically classify them as Signal vs Noise using Claude AI, and generate insightful reports.
+
+## Table of Contents
+
+- [Problem Solved](#problem-solved)
+- [Status: ✅ Complete & Functional](#status--complete--functional)
+- [Features](#features)
+- [Quick Start](#quick-start)
+  - [1. Installation](#1-installation)
+  - [2. Configuration](#2-configuration)
+  - [3. Usage](#3-usage)
+- [Project Status](#project-status)
+- [CLI Commands](#cli-commands)
+  - [`scan` - Analyze a Subreddit](#scan---analyze-a-subreddit)
+  - [`scan-hn` - Analyze HackerNews](#scan-hn---analyze-hackernews)
+  - [`compare` - Compare Subreddits](#compare---compare-subreddits)
+  - [`config` - Show Configuration](#config---show-configuration)
+  - [`init-db` - Initialize Database](#init-db---initialize-database)
+  - [`history` - View Scan History](#history---view-scan-history)
+  - [`cache-stats` - Cache Statistics](#cache-stats---cache-statistics)
+  - [`version` - Version Info](#version---version-info)
+- [Architecture](#architecture)
+  - [Dual-Mode Scraper](#dual-mode-scraper)
+- [MariaDB Cache Layer](#mariadb-cache-layer)
+  - [Database Schema](#database-schema)
+  - [Cache Behavior](#cache-behavior)
+  - [Setup Instructions](#setup-instructions)
+- [Data Models](#data-models)
+  - [Categories](#categories)
+  - [Red Flags](#red-flags)
+- [Tech Stack](#tech-stack)
+- [Development](#development)
+  - [Project Structure](#project-structure)
+  - [Testing](#testing)
+  - [Makefile Commands](#makefile-commands)
+- [Cost Estimates](#cost-estimates)
+- [Usage Examples](#usage-examples)
+- [Extending the Project](#extending-the-project)
+- [License](#license)
 
 ## Problem Solved
 
-Claude/LLM subreddits contain mixed content - from useful technical guides to unfounded mystical theories. This tool automates the filtering process using Claude AI to classify posts and identify red flags.
+Claude/LLM communities (Reddit subreddits and HackerNews) contain mixed content - from useful technical guides to unfounded mystical theories. This tool automates the filtering process using Claude AI to classify posts and identify red flags.
+
+**Sources Supported:**
+- **Reddit**: Subreddit-based analysis (r/ClaudeAI, r/LocalLLaMA, etc.)
+- **HackerNews**: Keyword-based filtering for relevant discussions
 
 ## Status: ✅ Complete & Functional
 
 All core features implemented and tested. Ready for immediate use.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  📊 Reddit Signal/Noise Analyzer                         │
-│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
-│                                                          │
-│  🎯 Analyze subreddits → 🤖 Classify with Claude AI     │
-│  📈 Generate metrics → 📊 Beautiful reports             │
-│                                                          │
-│  ✅ 9 Categories  ✅ 6 Red Flags  ✅ Multi-Subreddit    │
-│  ✅ JSON Export   ✅ Batch Processing  ✅ Zero Auth     │
-│  ✅ MariaDB Cache  ✅ 70-80% Cost Reduction             │
-└──────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  📊 Multi-Source Signal/Noise Analyzer                     │
+│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
+│                                                            │
+│  🎯 Reddit + HN → 🤖 Classify with Claude AI              │
+│  📈 Generate metrics → 📊 Beautiful reports               │
+│                                                            │
+│  ✅ 2 Sources  ✅ 9 Categories  ✅ 6 Red Flags            │
+│  ✅ JSON Export   ✅ Batch Processing  ✅ Zero Auth       │
+│  ✅ MariaDB Cache  ✅ 70-80% Cost Reduction               │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
-- **Dual-Mode Scraping**: RSS mode (no auth required) or PRAW mode (with Reddit credentials) with automatic fallback
+- **Multi-Source Support**: Analyze posts from both Reddit and HackerNews with unified classification
+- **Dual-Mode Reddit Scraping**: RSS mode (no auth required) or PRAW mode (with Reddit credentials) with automatic fallback
+- **HackerNews Integration**: Firebase API with keyword filtering (500 req/min, no auth needed)
 - **AI-Powered Classification**: Uses Claude Haiku 4.5 to classify posts into 9 categories (Signal/Noise/Meta/Other)
 - **Batch Processing**: Efficient batch classification (20 posts per API call) minimizes costs (~$0.10 per 100 posts)
 - **MariaDB Cache Layer**: Persistent cache that avoids re-classifying posts, reducing API costs by 70-80%
-- **Historical Tracking**: Scan history with metrics evolution over time
+- **Historical Tracking**: Scan history with metrics evolution over time (tracks both sources)
 - **Red Flag Detection**: Identifies 6 problematic patterns (unsourced claims, sensationalism, mystical language, etc.)
 - **Rich Terminal Output**: Beautiful CLI reports with tables, charts, and color-coded categories
 - **Multi-Subreddit Analysis**: Compare signal ratios across multiple subreddits simultaneously
@@ -69,6 +113,12 @@ ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
 SUBREDDITS=ClaudeAI,Claude,ClaudeCode,ClaudeExplorers
 ```
 
+**Optional for HackerNews**: Configure default keywords:
+```bash
+HN_DEFAULT_KEYWORDS=claude,anthropic,ai,artificial intelligence,llm
+HN_FETCH_LIMIT=100
+```
+
 **Optional**: Add Reddit credentials for faster scraping (60 req/min vs 10 req/min):
 ```bash
 REDDIT_CLIENT_ID=your_client_id
@@ -94,17 +144,23 @@ Then initialize the database:
 ### 3. Usage
 
 ```bash
-# Analyze a single subreddit (simple)
+# Reddit: Analyze a single subreddit (simple)
 ./reddit-analyzer scan ClaudeAI
 
-# Analyze with options
+# Reddit: Analyze with options
 ./reddit-analyzer scan ClaudeAI --limit 50 --sort top --time-filter week
 
-# Analyze all configured subreddits
+# Reddit: Analyze all configured subreddits
 ./reddit-analyzer scan all --limit 30 --export-json
 
-# Compare multiple subreddits
+# Reddit: Compare multiple subreddits
 ./reddit-analyzer compare --limit 20
+
+# HackerNews: Scan with keywords
+./reddit-analyzer scan-hn -k claude -k anthropic --limit 20
+
+# HackerNews: Uses default keywords from config
+./reddit-analyzer scan-hn --limit 50 --export-json
 
 # Show configuration
 ./reddit-analyzer config
@@ -189,6 +245,33 @@ Then initialize the database:
 - `--no-details`: Show summary only
 - `--no-cache`: Bypass database cache (classify all posts)
 
+### `scan-hn` - Analyze HackerNews
+
+Scan and analyze posts from HackerNews with keyword filtering:
+
+```bash
+# Using specific keywords
+./reddit-analyzer scan-hn -k claude -k anthropic --limit 20
+
+# Using default keywords from config
+./reddit-analyzer scan-hn --limit 50
+
+# Different sort methods
+./reddit-analyzer scan-hn -k llm --sort new --limit 30
+
+# With JSON export
+./reddit-analyzer scan-hn -k ai --export-json
+```
+
+**Options:**
+- `--keyword, -k`: Keywords to filter HN posts (can specify multiple, case-insensitive)
+- `--limit, -l`: Number of matching posts to fetch (default: 50, max: 500)
+- `--sort, -s`: Sort method (top, new, best) - default: top
+- `--export-json`: Export report to JSON
+- `--no-cache`: Bypass database cache (classify all posts)
+
+**Note**: If no keywords are provided, uses `HN_DEFAULT_KEYWORDS` from config. HackerNews uses Firebase API (500 req/min, no authentication required).
+
 ### `compare` - Compare Subreddits
 
 Compare signal ratios across all configured subreddits:
@@ -215,7 +298,12 @@ Create database schema for cache (requires MySQL/MariaDB):
 ./reddit-analyzer init-db
 ```
 
-Creates three tables: `reddit_posts`, `classifications`, and `scan_history`. Safe to run multiple times (idempotent).
+Creates three tables: `posts`, `classifications`, and `scan_history`. Supports both Reddit and HackerNews sources. Safe to run multiple times (idempotent).
+
+**Migration Note**: If upgrading from version 1.x, run the multi-source migration:
+```bash
+mysql -u your_user -p reddit_analyzer < src/claude_redditor/db/migrations/002_multi_source.sql
+```
 
 ### `history` - View Scan History
 
@@ -291,31 +379,33 @@ The cache layer uses MariaDB/MySQL to persistently store classifications, avoidi
 
 The system uses three tables to manage caching and tracking:
 
-#### `reddit_posts` - Post Metadata
-Stores Reddit post information to avoid re-fetching.
+#### `posts` - Post Metadata (Multi-Source)
+Stores post information from Reddit and HackerNews to avoid re-fetching.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | VARCHAR(20) | Reddit post ID (primary key) |
-| `subreddit` | VARCHAR(100) | Subreddit name |
+| `id` | VARCHAR(50) | Prefixed post ID: reddit_abc123, hn_8863 (primary key) |
+| `source` | ENUM | Content source: 'reddit' or 'hackernews' |
+| `subreddit` | VARCHAR(100) | Subreddit name (Reddit only, NULL for HN) |
 | `title` | TEXT | Post title |
 | `author` | VARCHAR(100) | Post author |
 | `score` | INT | Post score/upvotes |
 | `num_comments` | INT | Comment count |
 | `created_utc` | BIGINT | Unix timestamp |
 | `url` | TEXT | Post URL |
-| `selftext` | TEXT | Post content (truncated to 1000 chars) |
+| `selftext` | TEXT | Post content (truncated to 5000 chars) |
 | `fetched_at` | TIMESTAMP | When post was cached |
 
-**Indexes:** `subreddit`, `created_utc`, `fetched_at`
+**Indexes:** `source`, `subreddit`, `created_utc`, `fetched_at`, composite `(source, created_utc)`
 
 #### `classifications` - Claude Classifications
-Stores classification results from Claude API (one per post).
+Stores classification results from Claude API (one per post, multi-source).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INT | Auto-increment primary key |
-| `post_id` | VARCHAR(20) | Foreign key to reddit_posts (unique) |
+| `post_id` | VARCHAR(50) | Foreign key to posts.id (unique) |
+| `source` | ENUM | Content source matching the post: 'reddit' or 'hackernews' |
 | `category` | ENUM | One of 9 categories (technical, mystical, etc.) |
 | `confidence` | DECIMAL(3,2) | Confidence score (0.00-1.00) |
 | `red_flags` | JSON | Array of detected red flags |
@@ -323,24 +413,25 @@ Stores classification results from Claude API (one per post).
 | `model_version` | VARCHAR(50) | Claude model used |
 | `classified_at` | TIMESTAMP | When classification was made |
 
-**Indexes:** `post_id` (unique), `category`, `classified_at`
+**Indexes:** `post_id` (unique), `source`, `category`, `classified_at`
 
 **Constraints:** Foreign key cascade delete on `post_id`
 
 #### `scan_history` - Scan Tracking
-Records each scan with metrics for historical analysis.
+Records each scan with metrics for historical analysis (multi-source).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INT | Auto-increment primary key |
-| `subreddit` | VARCHAR(100) | Subreddit scanned |
+| `subreddit` | VARCHAR(100) | Subreddit name (Reddit) or "HackerNews" (HN) |
+| `source` | ENUM | Content source: 'reddit' or 'hackernews' |
 | `scan_date` | TIMESTAMP | When scan occurred |
 | `posts_fetched` | INT | Total posts retrieved |
 | `posts_classified` | INT | New posts classified |
 | `posts_cached` | INT | Posts retrieved from cache |
 | `signal_ratio` | DECIMAL(5,2) | Signal percentage (0-100) |
 
-**Indexes:** `subreddit`, `scan_date`
+**Indexes:** `subreddit`, `source`, `scan_date`
 
 ### Cache Behavior
 
@@ -516,6 +607,7 @@ make clean     # Remove caches and generated files
 
 ## Usage Examples
 
+### Reddit Examples
 ```bash
 # Quick scan of r/ClaudeAI (5 posts, no details)
 make scan
@@ -535,15 +627,38 @@ make scan
 # Bypass cache (force re-classification)
 ./reddit-analyzer scan ClaudeAI --limit 30 --no-cache
 
-# View scan history
+# Scan specific subreddit (not in config)
+./reddit-analyzer scan LocalLLaMA --limit 30
+```
+
+### HackerNews Examples
+```bash
+# Scan with specific keywords
+./reddit-analyzer scan-hn -k claude -k anthropic --limit 20
+
+# Use default keywords from config
+./reddit-analyzer scan-hn --limit 50
+
+# Scan for AI discussions (new stories)
+./reddit-analyzer scan-hn -k ai -k "machine learning" --sort new --limit 30
+
+# Export HN analysis to JSON
+./reddit-analyzer scan-hn -k llm --export-json
+
+# Bypass cache for fresh analysis
+./reddit-analyzer scan-hn -k claude --no-cache
+```
+
+### Database & History
+```bash
+# View scan history (all sources)
 ./reddit-analyzer history
+
+# Filter history by subreddit
 ./reddit-analyzer history ClaudeAI --limit 20
 
 # Check cache statistics
 ./reddit-analyzer cache-stats
-
-# Scan specific subreddit (not in config)
-./reddit-analyzer scan LocalLLaMA --limit 30
 ```
 
 ## Extending the Project

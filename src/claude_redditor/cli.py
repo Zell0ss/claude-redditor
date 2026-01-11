@@ -1,18 +1,19 @@
 """CLI interface for Reddit Signal/Noise Analyzer."""
 
 import typer
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 from rich import print as rprint
 from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
 
 from .scraper import create_scraper
 from .classifier import create_classifier
 from .analyzer import create_analyzer, create_cached_engine
 from .reporter import create_reporter
 from .config import settings
-from rich.table import Table
-from rich.panel import Panel
+from .cli_helpers import ensure_mysql_configured, render_cache_stats_table, handle_scan_error
 
 app = typer.Typer(
     name="reddit-analyzer",
@@ -131,13 +132,7 @@ def scan(
                 classifications, cache_stats = cached_engine.analyze_with_cache(posts_dicts, classifier)
 
                 # Show cache stats
-                table = Table(title="💾 Cache Stats", show_header=False, box=None)
-                table.add_row("Total posts", str(cache_stats['total']))
-                table.add_row("Cached", f"[green]{cache_stats['cached']}[/green] ({cache_stats['cache_hit_rate']:.1%})")
-                table.add_row("New classified", f"[cyan]{cache_stats['new']}[/cyan]")
-                if cache_stats['api_cost_saved'] > 0:
-                    table.add_row("API cost saved", f"~${cache_stats['api_cost_saved']:.3f}")
-                console.print(table)
+                console.print(render_cache_stats_table(cache_stats))
                 rprint()
 
             # Filter successfully classified posts
@@ -173,11 +168,14 @@ def scan(
                 rprint(f"[green]✓[/green] Report exported to: {json_path}\n")
 
         except Exception as e:
-            rprint(f"[red]✗ Error analyzing r/{sub}: {e}[/red]\n")
-            if typer.confirm("Continue with next subreddit?", default=True):
-                continue
+            if len(subreddits) > 1:
+                rprint(f"[red]✗ Error analyzing r/{sub}: {e}[/red]\n")
+                if typer.confirm("Continue with next subreddit?", default=True):
+                    continue
+                else:
+                    raise typer.Exit(1)
             else:
-                raise typer.Exit(1)
+                handle_scan_error(e, f"scan r/{sub}")
 
     # Show comparison if multiple subreddits
     if len(reports) > 1:
@@ -412,9 +410,7 @@ def history(
 
         reddit-analyzer history ClaudeAI --limit 20
     """
-    if not settings.is_mysql_configured():
-        rprint("[yellow]⚠ Database cache not configured[/yellow]\n")
-        raise typer.Exit(1)
+    ensure_mysql_configured(settings)
 
     try:
         from .db.connection import DatabaseConnection
@@ -468,9 +464,7 @@ def cache_stats():
 
         reddit-analyzer cache-stats
     """
-    if not settings.is_mysql_configured():
-        rprint("[yellow]⚠ Database cache not configured[/yellow]\n")
-        raise typer.Exit(1)
+    ensure_mysql_configured(settings)
 
     try:
         from .db.connection import DatabaseConnection
@@ -505,6 +499,143 @@ def cache_stats():
     except Exception as e:
         rprint(f"[red]✗ Error: {e}[/red]\n")
         raise typer.Exit(1)
+
+
+@app.command()
+def scan_hn(
+    keywords: List[str] = typer.Option(
+        None,
+        "-k", "--keyword",
+        help="Keywords to filter HN posts (can specify multiple: -k claude -k anthropic)"
+    ),
+    limit: int = typer.Option(
+        50,
+        "--limit", "-l",
+        help="Number of posts to analyze"
+    ),
+    sort: str = typer.Option(
+        "top",
+        "--sort", "-s",
+        help="Sort method: top, new, best"
+    ),
+    export_json: bool = typer.Option(
+        False,
+        "--export-json",
+        help="Export report to JSON file"
+    ),
+    no_details: bool = typer.Option(
+        False,
+        "--no-details",
+        help="Show summary only, hide detailed tables"
+    ),
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        help="Bypass database cache (classify all posts)"
+    ),
+):
+    """
+    Scan and analyze posts from HackerNews.
+
+    Examples:
+
+        reddit-analyzer scan-hn -k claude -k anthropic
+
+        reddit-analyzer scan-hn -k llm --limit 20 --sort new
+
+        reddit-analyzer scan-hn -k ai --export-json
+    """
+    from .scrapers import create_hn_scraper
+    from .classifier import create_classifier
+    from .analyzer import create_analyzer, create_cached_engine
+    from .reporter import create_reporter
+
+    # Use default keywords from config if none provided
+    if not keywords:
+        keywords = settings.get_hn_keywords()
+        rprint(f"[dim]Using default keywords: {', '.join(keywords)}[/dim]")
+
+    rprint(f"\n[bold cyan]Analyzing HackerNews[/bold cyan]")
+    rprint(f"[dim]Keywords: {', '.join(keywords)} | Limit: {limit} | Sort: {sort}[/dim]\n")
+
+    try:
+        # Scrape
+        scraper = create_hn_scraper(keywords=keywords)
+        posts = scraper.fetch_posts(limit=limit, sort=sort)
+
+        if not posts:
+            rprint(f"[yellow]⚠ No posts found matching keywords[/yellow]\n")
+            raise typer.Exit(0)
+
+        rprint(f"[green]✓[/green] Fetched {len(posts)} posts")
+
+        # Classify (with or without cache)
+        classifier = create_classifier()
+        cached_engine = create_cached_engine(settings)
+
+        # Convert posts to dicts for compatibility
+        posts_dicts = [p.to_dict() for p in posts]
+
+        if no_cache or not settings.is_mysql_configured():
+            if no_cache:
+                rprint(f"[yellow]Cache bypassed[/yellow]")
+            rprint(f"[dim]Classifying {len(posts)} posts with Claude...[/dim]")
+            classifications = classifier.classify_posts(posts)
+            cache_stats = {'total': len(posts), 'cached': 0, 'new': len(classifications), 'cache_hit_rate': 0.0}
+        else:
+            rprint(f"[dim]Checking cache and classifying new posts...[/dim]")
+            classifications, cache_stats = cached_engine.analyze_with_cache(
+                posts_dicts,
+                classifier,
+                source='hackernews'
+            )
+
+            # Show cache stats
+            console.print(render_cache_stats_table(cache_stats))
+            rprint()
+
+        # Filter successfully classified posts
+        classified_post_ids = {c.post_id for c in classifications}
+        filtered_posts = [p for p in posts if p.id in classified_post_ids]
+
+        if len(filtered_posts) != len(posts):
+            rprint(f"[yellow]⚠ {len(posts) - len(filtered_posts)} posts failed classification[/yellow]")
+
+        # Analyze
+        analyzer = create_analyzer()
+        report = analyzer.analyze(
+            posts=filtered_posts,
+            classifications=classifications,
+            subreddit="HackerNews",
+            period=f"{limit} {sort} posts (keywords: {', '.join(keywords)})",
+        )
+
+        # Save scan history if cache is enabled
+        if settings.is_mysql_configured() and hasattr(cached_engine, 'repo'):
+            cached_engine.repo.save_scan_history(
+                subreddit="HackerNews",
+                posts_fetched=len(posts),
+                posts_classified=cache_stats['new'],
+                posts_cached=cache_stats['cached'],
+                signal_ratio=report.signal_ratio * 100,
+                source='hackernews'
+            )
+
+        # Display
+        reporter = create_reporter()
+        reporter.render_terminal(report, show_details=not no_details)
+
+        # Export if requested
+        if export_json:
+            reporter.export_json(report)
+
+        rprint("\n[green]✓ Analysis complete![/green]\n")
+
+    except KeyboardInterrupt:
+        rprint("\n[yellow]⚠ Aborted by user[/yellow]\n")
+        raise typer.Exit(1)
+    except Exception as e:
+        handle_scan_error(e, "HackerNews scan")
 
 
 @app.command()

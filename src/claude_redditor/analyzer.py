@@ -249,10 +249,11 @@ class CachedAnalysisEngine:
         self,
         posts: List[Dict],
         classifier,
-        model_version: Optional[str] = None
+        model_version: Optional[str] = None,
+        source: str = 'reddit'
     ) -> Tuple[List[Classification], Dict]:
         """
-        Analyze posts using cache.
+        Analyze posts using cache (multi-source support).
 
         Flow:
         1. Check cache for post_ids
@@ -261,9 +262,10 @@ class CachedAnalysisEngine:
         4. Return all (cached + new)
 
         Args:
-            posts: List of post dicts (from scraper)
+            posts: List of post dicts (from scraper, with prefixed IDs)
             classifier: PostClassifier instance
             model_version: Claude model version (default: from config)
+            source: Content source ('reddit' or 'hackernews')
 
         Returns:
             (classifications, cache_stats)
@@ -307,7 +309,7 @@ class CachedAnalysisEngine:
         logger.info(f"Analyzing {len(post_ids)} posts (cache enabled)")
 
         # Check cache
-        cached_data = self.repo.get_cached_classifications(post_ids)
+        cached_data = self.repo.get_cached_classifications(post_ids, source=source)
         cached_ids = {c['post_id'] for c in cached_data}
 
         # Convert cached data to Classification objects
@@ -349,7 +351,7 @@ class CachedAnalysisEngine:
             new_classifications = classifier.classify_posts(posts_to_classify)
 
             # Save to DB
-            self.repo.save_posts(to_classify)
+            self.repo.save_posts(to_classify, source=source)
 
             # Convert to dicts for saving
             new_classifications_dicts = [
@@ -362,7 +364,7 @@ class CachedAnalysisEngine:
                 }
                 for c in new_classifications
             ]
-            self.repo.save_classifications(new_classifications_dicts, model_version)
+            self.repo.save_classifications(new_classifications_dicts, source=source, model_version=model_version)
             logger.info(f"Saved {len(new_classifications)} new classifications")
 
         # Calculate stats

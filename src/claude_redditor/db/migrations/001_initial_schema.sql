@@ -10,14 +10,14 @@ USE reddit_analyzer;
 -- Table 1: Posts
 CREATE TABLE IF NOT EXISTS reddit_posts (
     id VARCHAR(20) PRIMARY KEY COMMENT 'Reddit post ID',
-    subreddit VARCHAR(100) NOT NULL,
+    subreddit VARCHAR(100) NULL,
     title TEXT NOT NULL,
     author VARCHAR(100),
     score INT,
     num_comments INT,
     created_utc BIGINT COMMENT 'Unix timestamp',
     url TEXT,
-    selftext TEXT COMMENT 'Truncated to 1000 chars',
+    selftext TEXT COMMENT 'Truncated to 5000 chars',
     fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_subreddit (subreddit),

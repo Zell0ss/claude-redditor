@@ -58,7 +58,7 @@ Scraper → Classifier → Analyzer → Reporter
 **Key Design Decisions:**
 - **Batch Processing**: 20 posts per Claude API call to minimize cost (~$0.001 per post)
 - **Aggressive Caching**: Posts are immutable, cache by (subreddit, params, date) with 24hr TTL
-- **Text Truncation**: Selftext limited to 1000 chars for classification to reduce tokens
+- **Text Truncation**: Selftext limited to 5000/MAX_LINES_ARTICLE chars for classification to reduce tokens
 - **Haiku Model**: Cost-effective choice for classification tasks
 
 ## Critical Configuration
@@ -133,7 +133,7 @@ Green threshold: >60% signal indicates healthy subreddit content quality.
 - **Anthropic**: 50 requests/min on free tier
 
 ### Technical Gotchas
-1. **Selftext length**: Some posts exceed 10k chars → must truncate to 1000 for classification
+1. **Selftext length**: Some posts exceed 10k chars → must truncate to 5000 for classification
 2. **JSON parsing**: Claude may fail generating valid JSON → implement retry logic with validation
 3. **Batch processing**: Always process in batches of 20 to optimize cost vs latency
 4. **Reddit auth**: Requires creating Reddit app (see previous.md for setup instructions)

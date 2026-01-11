@@ -1,4 +1,4 @@
-.PHONY: help install dev test clean cli scan compare config
+.PHONY: help install dev test clean cli scan scan-hn compare config cmonitor
 
 # Python interpreter (uses venv if available)
 PYTHON := $(shell if [ -d ".venv" ]; then echo ".venv/bin/python"; else echo "python3"; fi)
@@ -14,6 +14,7 @@ help:
 	@echo ""
 	@echo "CLI Commands:"
 	@echo "  make scan       - Quick scan of ClaudeAI (5 posts)"
+	@echo "  make scan-hn    - Quick scan of HackerNews (5 posts)"
 	@echo "  make compare    - Compare all subreddits (10 posts each)"
 	@echo "  make config     - Show current configuration"
 	@echo ""
@@ -41,6 +42,10 @@ dev:
 scan:
 	@echo "Running quick scan of r/ClaudeAI..."
 	@bash -c "source .venv/bin/activate && ./reddit-analyzer scan ClaudeAI --limit 5 --no-details"
+
+scan-hn:
+	@echo "Running quick scan of HackerNews..."
+	@bash -c "source .venv/bin/activate && ./reddit-analyzer scan-hn --limit 5"
 
 compare:
 	@echo "Comparing all configured subreddits..."
@@ -92,3 +97,7 @@ clean-all: clean
 	@echo "Deep cleaning (includes reports)..."
 	rm -rf outputs/ 2>/dev/null || true
 	@echo "✓ Deep cleanup complete"
+
+cmonitor:
+	@echo "Monitoring claude consumption..."
+	claude-monitor --plan pro

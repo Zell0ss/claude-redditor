@@ -1,29 +1,16 @@
-"""
-DEPRECATED: This module is kept for backward compatibility.
-
-Use `from claude_redditor.scrapers import create_reddit_scraper` instead.
-
-The RedditScraper class has been moved to scrapers/reddit.py and now
-returns Post objects instead of RedditPost objects for multi-source support.
-"""
+"""Reddit scraper with dual-mode support (RSS or PRAW)."""
 
 from typing import List
 import time
 import requests
 import feedparser
 import re
-from datetime import datetime
 
-from .config import settings
-from .core.models import RedditPost
-
-# Import from new location for backward compatibility
-from .scrapers import create_reddit_scraper as _create_reddit_scraper
-from .scrapers.reddit import RedditScraper as _NewRedditScraper
-from .scrapers import Post
+from ..config import settings
+from .base import BaseScraper, Post, prefix_id
 
 
-class RedditScraper:
+class RedditScraper(BaseScraper):
     """
     Dual-mode Reddit scraper:
     1. RSS feed (no auth): 10 req/min, zero setup
@@ -39,6 +26,10 @@ class RedditScraper:
             self._init_praw()
         else:
             self._init_json()
+
+    def get_source_name(self) -> str:
+        """Return source identifier."""
+        return "reddit"
 
     def _detect_mode(self) -> str:
         """Detect if Reddit credentials are available."""
@@ -60,7 +51,7 @@ class RedditScraper:
             self.rate_limit = 60
             print(f"✓ Reddit scraper: PRAW mode ({self.rate_limit} req/min)")
         except ImportError:
-            print("⚠ PRAW not installed, falling back to JSON mode")
+            print("⚠ PRAW not installed, falling back to RSS mode")
             self.mode = "json"
             self._init_json()
 
@@ -87,9 +78,10 @@ class RedditScraper:
         limit: int = 100,
         time_filter: str = "week",
         sort: str = "hot",
-    ) -> List[RedditPost]:
+        **kwargs
+    ) -> List[Post]:
         """
-        Fetch posts using available mode.
+        Fetch posts from Reddit and return normalized Post objects.
 
         Args:
             subreddit_name: Name of subreddit (without 'r/')
@@ -98,8 +90,11 @@ class RedditScraper:
             sort: Sort method (hot, new, top, rising)
 
         Returns:
-            List of RedditPost objects
+            List of Post objects with prefixed IDs ("reddit_abc123")
         """
+        if not subreddit_name:
+            raise ValueError("subreddit_name is required for RedditScraper")
+
         if self.mode == "praw":
             return self._fetch_praw(subreddit_name, limit, time_filter, sort)
         else:
@@ -107,7 +102,7 @@ class RedditScraper:
 
     def _fetch_praw(
         self, subreddit_name: str, limit: int, time_filter: str, sort: str
-    ) -> List[RedditPost]:
+    ) -> List[Post]:
         """Fetch using PRAW."""
         subreddit = self.reddit.subreddit(subreddit_name)
 
@@ -127,8 +122,8 @@ class RedditScraper:
 
     def _fetch_json(
         self, subreddit_name: str, limit: int, sort: str
-    ) -> List[RedditPost]:
-        """Fetch using RSS feed (alternative to JSON endpoint)."""
+    ) -> List[Post]:
+        """Fetch using RSS feed."""
         self._rate_limit_wait()
 
         # Reddit RSS feeds: /.rss for hot, /new/.rss for new, etc.
@@ -150,7 +145,7 @@ class RedditScraper:
                 print(f"⚠ No posts found in RSS feed for r/{subreddit_name}")
                 return []
 
-            # Convert RSS entries to RedditPost objects (limited data available)
+            # Convert RSS entries to Post objects
             posts = []
             for entry in feed.entries[:limit]:
                 posts.append(self._normalize_rss_entry(entry, subreddit_name))
@@ -161,10 +156,14 @@ class RedditScraper:
             print(f"⚠ Error fetching RSS feed: {e}")
             return []
 
-    def _normalize_praw_post(self, post) -> RedditPost:
-        """Normalize PRAW post object to RedditPost."""
-        return RedditPost(
-            id=post.id,
+    def _normalize_praw_post(self, post) -> Post:
+        """Normalize PRAW post object to Post with prefixed ID."""
+        raw_id = post.id
+        prefixed_id = prefix_id(raw_id, "reddit")
+
+        return Post(
+            id=prefixed_id,
+            source="reddit",
             title=post.title,
             selftext=post.selftext or "",
             author=str(post.author) if post.author else "[deleted]",
@@ -172,32 +171,20 @@ class RedditScraper:
             num_comments=post.num_comments,
             created_utc=post.created_utc,
             url=post.url,
+            source_url=post.url,
             subreddit=post.subreddit.display_name,
             flair=post.link_flair_text,
+            hn_type=None,
         )
 
-    def _normalize_json_post(self, post_data: dict) -> RedditPost:
-        """Normalize JSON endpoint post data to RedditPost."""
-        return RedditPost(
-            id=post_data["id"],
-            title=post_data["title"],
-            selftext=post_data.get("selftext", ""),
-            author=post_data.get("author", "[deleted]"),
-            score=post_data["score"],
-            num_comments=post_data["num_comments"],
-            created_utc=post_data["created_utc"],
-            url=post_data["url"],
-            subreddit=post_data["subreddit"],
-            flair=post_data.get("link_flair_text"),
-        )
-
-    def _normalize_rss_entry(self, entry, subreddit_name: str) -> RedditPost:
+    def _normalize_rss_entry(self, entry, subreddit_name: str) -> Post:
         """
-        Normalize RSS feed entry to RedditPost.
-        Note: RSS has limited data - no score, comments count, or selftext.
+        Normalize RSS feed entry to Post with prefixed ID.
+        Note: RSS has limited data - no score, comments count, or full selftext.
         """
         # Extract post ID from entry.id (format: t3_postid)
-        post_id = entry.id.split("_")[-1] if hasattr(entry, "id") else "unknown"
+        raw_id = entry.id.split("_")[-1] if hasattr(entry, "id") else "unknown"
+        prefixed_id = prefix_id(raw_id, "reddit")
 
         # Extract author from entry (if available)
         author = "[unknown]"
@@ -223,8 +210,9 @@ class RedditScraper:
         elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
             created_utc = time.mktime(entry.updated_parsed)
 
-        return RedditPost(
-            id=post_id,
+        return Post(
+            id=prefixed_id,
+            source="reddit",
             title=entry.title if hasattr(entry, "title") else "[No title]",
             selftext=selftext[:settings.max_lines_article],  # Truncate based on config
             author=author,
@@ -232,8 +220,10 @@ class RedditScraper:
             num_comments=0,  # Not available in RSS
             created_utc=created_utc,
             url=entry.link if hasattr(entry, "link") else "",
+            source_url=entry.link if hasattr(entry, "link") else "",
             subreddit=subreddit_name,
             flair=None,  # Not available in RSS
+            hn_type=None,
         )
 
     def get_mode_info(self) -> dict:
@@ -243,14 +233,3 @@ class RedditScraper:
             "rate_limit": f"{self.rate_limit} req/min",
             "authenticated": self.mode == "praw",
         }
-
-
-def create_scraper():
-    """
-    Factory function to create a RedditScraper instance.
-
-    DEPRECATED: Use `from .scrapers import create_reddit_scraper` instead.
-    This wrapper maintains backward compatibility.
-    """
-    # Use new scraper from scrapers/ directory
-    return _create_reddit_scraper()
