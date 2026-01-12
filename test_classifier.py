@@ -64,12 +64,20 @@ def test_single_post_classification():
 {classification.reasoning}"""
 
         # Choose border color based on category
-        if classification.category.value in ["technical", "troubleshooting", "research_verified"]:
+        from src.claude_redditor.core.enums import CategoryEnum
+
+        signal_cats = [c.value for c in CategoryEnum.signal_categories()]
+        noise_cats = [c.value for c in CategoryEnum.noise_categories()]
+
+        if classification.category.value in signal_cats:
             border_style = "green"
             category_type = "SIGNAL ✓"
-        elif classification.category.value in ["mystical", "unverified_claim", "engagement_bait"]:
+        elif classification.category.value in noise_cats:
             border_style = "red"
             category_type = "NOISE ✗"
+        elif classification.category.value == "unrelated":
+            border_style = "dim"
+            category_type = "UNRELATED 🔍"
         else:
             border_style = "yellow"
             category_type = "META/OTHER"

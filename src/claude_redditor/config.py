@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Target subreddits (comma-separated in .env)
     subreddits: str = ""
 
+    # Content topic/focus (used for classification relevance filtering)
+    topic: str = "AI and Large Language Models, particularly Claude and Claude Code related content"
+
     # HackerNews settings
     hn_default_keywords: str = "claude,anthropic,ai,artificial intelligence,llm"
     hn_fetch_limit: int = 100

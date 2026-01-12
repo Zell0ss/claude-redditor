@@ -81,6 +81,7 @@ class Classification(Base):
             'technical', 'troubleshooting', 'research_verified',
             'mystical', 'unverified_claim', 'engagement_bait',
             'community', 'meme', 'outlier',
+            'unrelated',  # Posts outside topic scope
             name='category_enum'
         ),
         nullable=False,

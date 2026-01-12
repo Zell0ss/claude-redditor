@@ -71,7 +71,9 @@ class PostClassifier:
         posts_json = json.dumps(posts_data, indent=2)
 
         # Build the prompt
+        from .config import settings
         prompt = self.prompt_template.replace("{posts_json}", posts_json)
+        prompt = prompt.replace("{topic}", settings.topic)
 
         # Call Claude API
         print(f"🤖 Classifying {len(posts)} posts with {self.model}...")

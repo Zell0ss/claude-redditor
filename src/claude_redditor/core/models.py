@@ -108,6 +108,7 @@ class AnalysisReport:
     red_flags_distribution: Dict[str, int]
     top_signal: List[PostSummary] = field(default_factory=list)
     top_noise: List[PostSummary] = field(default_factory=list)
+    unrelated_count: int = 0  # Posts filtered as off-topic
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -120,4 +121,5 @@ class AnalysisReport:
             "red_flags_distribution": self.red_flags_distribution,
             "top_signal": [post.to_dict() for post in self.top_signal],
             "top_noise": [post.to_dict() for post in self.top_noise],
+            "unrelated_count": self.unrelated_count,
         }

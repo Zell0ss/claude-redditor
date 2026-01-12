@@ -44,11 +44,18 @@ class PostAnalyzer:
         # Calculate category distribution
         category_counts = Counter(c.category for c in classifications)
 
-        # Calculate signal ratio
+        # Count UNRELATED posts separately
+        unrelated_count = sum(1 for c in classifications if c.category == CategoryEnum.UNRELATED)
+
+        # Calculate signal ratio (EXCLUDE UNRELATED from denominator)
+        relevant_classifications = [
+            c for c in classifications
+            if c.category != CategoryEnum.UNRELATED
+        ]
         signal_count = sum(
-            1 for c in classifications if CategoryEnum.is_signal(c.category)
+            1 for c in relevant_classifications if CategoryEnum.is_signal(c.category)
         )
-        signal_ratio = signal_count / len(classifications) if classifications else 0.0
+        signal_ratio = signal_count / len(relevant_classifications) if relevant_classifications else 0.0
 
         # Calculate red flags distribution
         red_flags_counter = Counter()
@@ -106,6 +113,7 @@ class PostAnalyzer:
             red_flags_distribution=dict(red_flags_counter),
             top_signal=top_signal,
             top_noise=top_noise,
+            unrelated_count=unrelated_count,
         )
 
     def compare_subreddits(
@@ -169,7 +177,7 @@ class PostAnalyzer:
         meta_count = sum(
             count
             for cat, count in report.category_counts.items()
-            if cat in ["community", "meme"]
+            if cat in [CategoryEnum.COMMUNITY.value, CategoryEnum.MEME.value]
         )
 
         return {

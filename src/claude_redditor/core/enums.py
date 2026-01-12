@@ -24,6 +24,9 @@ class CategoryEnum(str, Enum):
     # OTHER
     OUTLIER = "outlier"                      # Doesn't fit clearly
 
+    # UNRELATED (off-topic content)
+    UNRELATED = "unrelated"                   # Content outside the configured topic scope
+
     @classmethod
     def signal_categories(cls) -> List["CategoryEnum"]:
         """Return list of categories considered 'signal' (useful content)."""

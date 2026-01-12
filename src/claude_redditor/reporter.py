@@ -52,6 +52,15 @@ class ReportRenderer:
             if report.top_noise:
                 self._render_top_posts(report.top_noise, "Top Noise Posts", "red")
 
+        # Add unrelated summary if applicable
+        if report.unrelated_count > 0:
+            from rich import print as rprint
+            rprint()  # Blank line before
+            rprint(
+                f"[dim]🔍 Unrelated:[/dim] [dim]{report.unrelated_count} "
+                f"post{'s' if report.unrelated_count != 1 else ''} filtered (off-topic)[/dim]"
+            )
+
     def render_comparison(self, reports: List[AnalysisReport]) -> None:
         """
         Render comparison of multiple subreddit reports.
@@ -139,7 +148,7 @@ class ReportRenderer:
 
         meta_count = sum(
             count for cat, count in report.category_counts.items()
-            if cat in ["community", "meme"]
+            if cat in [CategoryEnum.COMMUNITY.value, CategoryEnum.MEME.value]
         )
 
         # Signal ratio bar
@@ -168,7 +177,13 @@ class ReportRenderer:
         table.add_column("Count", justify="right", style="white")
         table.add_column("Percentage", justify="right", style="green")
 
-        for category, count in sorted(report.category_counts.items(), key=lambda x: x[1], reverse=True):
+        # Filter out UNRELATED from table
+        visible_categories = {
+            cat: count for cat, count in report.category_counts.items()
+            if cat != CategoryEnum.UNRELATED.value
+        }
+
+        for category, count in sorted(visible_categories.items(), key=lambda x: x[1], reverse=True):
             cat_enum = CategoryEnum(category)
             percentage = (count / report.total_posts) * 100
 
