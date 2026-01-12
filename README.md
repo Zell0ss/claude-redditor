@@ -61,20 +61,22 @@ All core features implemented and tested. Ready for immediate use.
 │  📈 Generate metrics → 📊 Beautiful reports               │
 │                                                            │
 │  ✅ 2 Sources  ✅ 9 Categories  ✅ 6 Red Flags            │
-│  ✅ JSON Export   ✅ Batch Processing  ✅ Zero Auth       │
+│  ✅ Multi-Project  ✅ Batch Processing  ✅ Zero Auth      │
 │  ✅ MariaDB Cache  ✅ 70-80% Cost Reduction               │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
+- **Multi-Project Architecture**: Run independent daily extractions for different content domains (AI/podcast, wine/blog, etc.) with isolated data
 - **Multi-Source Support**: Analyze posts from both Reddit and HackerNews with unified classification
 - **Dual-Mode Reddit Scraping**: RSS mode (no auth required) or PRAW mode (with Reddit credentials) with automatic fallback
 - **HackerNews Integration**: Firebase API with keyword filtering (500 req/min, no auth needed)
-- **AI-Powered Classification**: Uses Claude Haiku 4.5 to classify posts into 9 categories (Signal/Noise/Meta/Other)
+- **AI-Powered Classification**: Uses Claude Haiku 4.5 to classify posts into 10 categories (Signal/Noise/Meta/Other/Unrelated)
+- **Topic-Aware Filtering**: UNRELATED category filters off-topic posts based on configured TOPIC
 - **Batch Processing**: Efficient batch classification (20 posts per API call) minimizes costs (~$0.10 per 100 posts)
 - **MariaDB Cache Layer**: Persistent cache that avoids re-classifying posts, reducing API costs by 70-80%
-- **Historical Tracking**: Scan history with metrics evolution over time (tracks both sources)
+- **Historical Tracking**: Scan history with metrics evolution over time (tracks both sources and projects)
 - **Red Flag Detection**: Identifies 6 problematic patterns (unsourced claims, sensationalism, mystical language, etc.)
 - **Rich Terminal Output**: Beautiful CLI reports with tables, charts, and color-coded categories
 - **Multi-Subreddit Analysis**: Compare signal ratios across multiple subreddits simultaneously
@@ -108,15 +110,24 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
 ```
 
-**Required for multi-subreddit commands**: Configure target subreddits:
+**Multi-Project Support**: Configure multiple independent projects with prefixed variables:
+
 ```bash
-SUBREDDITS=ClaudeAI,Claude,ClaudeCode,ClaudeExplorers
+# Project: ClaudeIA (AI/LLM content for podcast)
+CLAUDEIA_TOPIC="AI and Large Language Models, particularly Claude"
+CLAUDEIA_SUBREDDITS=ClaudeAI,Claude,ClaudeCode,ClaudeExplorers
+CLAUDEIA_HN_KEYWORDS=claude,anthropic,ai,llm
+
+# Project: WineWorld (Wine industry for blog)
+WINEWORLD_TOPIC="Wine industry, viticulture, wine tasting"
+WINEWORLD_SUBREDDITS=wine,winemaking,sommelier
+WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard,sommelier
 ```
 
-**Optional for HackerNews**: Configure default keywords:
+**Legacy (backward compatible)**: Single project configuration:
 ```bash
-HN_DEFAULT_KEYWORDS=claude,anthropic,ai,artificial intelligence,llm
-HN_FETCH_LIMIT=100
+SUBREDDITS=ClaudeAI,Claude,ClaudeCode
+HN_DEFAULT_KEYWORDS=claude,anthropic,ai
 ```
 
 **Optional**: Add Reddit credentials for faster scraping (60 req/min vs 10 req/min):
@@ -144,23 +155,23 @@ Then initialize the database:
 ### 3. Usage
 
 ```bash
-# Reddit: Analyze a single subreddit (simple)
-./reddit-analyzer scan ClaudeAI
+# Reddit: Analyze a single subreddit (uses default project)
+./reddit-analyzer scan ClaudeAI --limit 50
 
-# Reddit: Analyze with options
-./reddit-analyzer scan ClaudeAI --limit 50 --sort top --time-filter week
+# Multi-Project: Analyze ClaudeIA project (AI content)
+./reddit-analyzer scan all --project claudeia --limit 50
 
-# Reddit: Analyze all configured subreddits
-./reddit-analyzer scan all --limit 30 --export-json
+# Multi-Project: Analyze WineWorld project (wine content)
+./reddit-analyzer scan all --project wineworld --limit 50
 
-# Reddit: Compare multiple subreddits
-./reddit-analyzer compare --limit 20
+# Reddit: Compare multiple subreddits within a project
+./reddit-analyzer compare --project claudeia --limit 20
 
-# HackerNews: Scan with keywords
+# HackerNews: Scan with specific keywords
 ./reddit-analyzer scan-hn -k claude -k anthropic --limit 20
 
-# HackerNews: Uses default keywords from config
-./reddit-analyzer scan-hn --limit 50 --export-json
+# HackerNews: Use project-specific keywords
+./reddit-analyzer scan-hn --project wineworld --limit 50
 
 # Show configuration
 ./reddit-analyzer config
@@ -177,6 +188,63 @@ Then initialize the database:
 # Show version
 ./reddit-analyzer version
 ```
+
+## Multi-Project Support
+
+The analyzer supports running multiple independent projects with isolated data and configurations. Perfect for:
+- **Content diversification**: AI podcast + Wine blog from the same tool
+- **Team isolation**: Different teams analyzing different topics
+- **A/B testing**: Compare classification strategies across projects
+
+### Key Features
+
+- **Project Isolation**: Complete data separation in database (`project` column)
+- **Independent Configs**: Each project has its own TOPIC, SUBREDDITS, HN_KEYWORDS
+- **Shared Infrastructure**: Single API key, database, and codebase
+- **Backward Compatible**: Existing scans continue working (assigned to "default" project)
+
+### Configuration Example
+
+```bash
+# In .env file
+CLAUDEIA_TOPIC="AI and Large Language Models"
+CLAUDEIA_SUBREDDITS=ClaudeAI,Claude,ClaudeCode
+CLAUDEIA_HN_KEYWORDS=claude,anthropic,ai,llm
+
+WINEWORLD_TOPIC="Wine industry and viticulture"
+WINEWORLD_SUBREDDITS=wine,winemaking,sommelier
+WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard
+```
+
+### Usage Examples
+
+```bash
+# Scan ClaudeIA project (AI content)
+./reddit-analyzer scan all --project claudeia --limit 50
+./reddit-analyzer scan-hn --project claudeia --limit 100
+
+# Scan WineWorld project (wine content)
+./reddit-analyzer scan all --project wineworld --limit 50
+./reddit-analyzer scan-hn --project wineworld --limit 100
+
+# View project-specific history
+./reddit-analyzer history --project claudeia --limit 20
+./reddit-analyzer history --project wineworld --limit 20
+
+# Check cache stats per project
+./reddit-analyzer cache-stats --project claudeia
+./reddit-analyzer cache-stats --project wineworld
+```
+
+### Database Migration
+
+If upgrading from a previous version, run the migration:
+
+```bash
+mysql -u your_user -p reddit_analyzer < src/claude_redditor/db/migrations/004_add_project_column.sql
+```
+
+All existing data will be assigned to the "default" project automatically.
 
 ## Project Status
 

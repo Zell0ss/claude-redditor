@@ -25,7 +25,8 @@ class Repository:
     def get_cached_classifications(
         self,
         post_ids: List[str],
-        source: str = 'reddit'
+        source: str = 'reddit',
+        project: str = 'default'
     ) -> List[Dict]:
         """
         Get cached classifications (multi-source support).
@@ -33,6 +34,7 @@ class Repository:
         Args:
             post_ids: List of post IDs (with prefixes: reddit_abc123, hn_8863)
             source: Content source ('reddit' or 'hackernews')
+            project: Project name (default: 'default')
 
         Returns:
             List of dicts with classification + post data
@@ -46,6 +48,7 @@ class Repository:
                 .join(RedditPost, Classification.post_id == RedditPost.id)
                 .where(Classification.post_id.in_(post_ids))
                 .where(Classification.source == source)
+                .where(Classification.project == project)
             ).all()
 
             cached = []
@@ -61,7 +64,8 @@ class Repository:
         self,
         classifications: List[Dict],
         source: str = 'reddit',
-        model_version: str = "claude-haiku-4-5-20251001"
+        model_version: str = "claude-haiku-4-5-20251001",
+        project: str = 'default'
     ) -> None:
         """
         Save classifications (multi-source support).
@@ -71,6 +75,7 @@ class Repository:
             classifications: List of classification dicts
             source: Content source ('reddit' or 'hackernews')
             model_version: Claude model version used
+            project: Project name (default: 'default')
         """
         if not classifications:
             return
@@ -81,6 +86,7 @@ class Repository:
                 stmt = insert(Classification).values(
                     post_id=cls_data['post_id'],
                     source=source,
+                    project=project,
                     category=cls_data['category'],
                     confidence=cls_data['confidence'],
                     red_flags=cls_data.get('red_flags', []),
@@ -91,6 +97,7 @@ class Repository:
                 # On conflict: update
                 stmt = stmt.on_duplicate_key_update(
                     source=stmt.inserted.source,
+                    project=stmt.inserted.project,
                     category=stmt.inserted.category,
                     confidence=stmt.inserted.confidence,
                     red_flags=stmt.inserted.red_flags,
@@ -105,7 +112,7 @@ class Repository:
 
     # ============ POSTS ============
 
-    def save_posts(self, posts: List[Dict], source: str = 'reddit') -> None:
+    def save_posts(self, posts: List[Dict], source: str = 'reddit', project: str = 'default') -> None:
         """
         Save posts from any source (multi-source support).
         INSERT IGNORE to avoid duplicates.
@@ -113,6 +120,7 @@ class Repository:
         Args:
             posts: List of post dicts (with prefixed IDs)
             source: Content source ('reddit' or 'hackernews')
+            project: Project name (default: 'default')
         """
         if not posts:
             return
@@ -128,6 +136,7 @@ class Repository:
                     post = RedditPost(
                         id=post_data['id'],
                         source=source,
+                        project=project,
                         subreddit=post_data.get('subreddit'),  # Nullable for HN
                         title=post_data['title'],
                         author=post_data.get('author'),
@@ -150,7 +159,8 @@ class Repository:
         posts_classified: int,
         posts_cached: int,
         signal_ratio: float,
-        source: str = 'reddit'
+        source: str = 'reddit',
+        project: str = 'default'
     ) -> None:
         """
         Save scan to history (multi-source support).
@@ -162,23 +172,26 @@ class Repository:
             posts_cached: Posts from cache
             signal_ratio: Signal percentage
             source: Content source ('reddit' or 'hackernews')
+            project: Project name (default: 'default')
         """
         with self.db.get_session() as session:
             scan = ScanHistory(
                 subreddit=subreddit,
                 source=source,
+                project=project,
                 posts_fetched=posts_fetched,
                 posts_classified=posts_classified,
                 posts_cached=posts_cached,
                 signal_ratio=signal_ratio
             )
             session.add(scan)
-            logger.info(f"Scan history saved: {subreddit} (source: {source})")
+            logger.info(f"Scan history saved: {subreddit} (source: {source}, project: {project})")
 
     def get_scan_history(
         self,
         subreddit: Optional[str] = None,
-        limit: int = 10
+        limit: int = 10,
+        project: Optional[str] = None
     ) -> List[Dict]:
         """
         Get scan history.
@@ -186,6 +199,7 @@ class Repository:
         Args:
             subreddit: Filter by subreddit (None = all)
             limit: Maximum results
+            project: Filter by project (None = all)
 
         Returns:
             List of scan history dicts
@@ -196,6 +210,9 @@ class Repository:
             if subreddit:
                 query = query.where(ScanHistory.subreddit == subreddit)
 
+            if project:
+                query = query.where(ScanHistory.project == project)
+
             query = query.limit(limit)
 
             results = session.execute(query).scalars().all()
@@ -203,41 +220,48 @@ class Repository:
 
     # ============ STATS ============
 
-    def get_classification_stats(self, subreddit: str) -> Dict:
+    def get_classification_stats(self, subreddit: str, project: Optional[str] = None) -> Dict:
         """
         Aggregated stats by category.
 
         Args:
             subreddit: Subreddit name
+            project: Filter by project (None = all)
 
         Returns:
             {'technical': 15, 'mystical': 8, ...}
         """
         with self.db.get_session() as session:
-            results = session.execute(
-                select(
-                    Classification.category,
-                    func.count(Classification.id).label('count')
-                )
-                .join(RedditPost, Classification.post_id == RedditPost.id)
-                .where(RedditPost.subreddit == subreddit)
-                .group_by(Classification.category)
-            ).all()
+            query = select(
+                Classification.category,
+                func.count(Classification.id).label('count')
+            ).join(RedditPost, Classification.post_id == RedditPost.id).where(RedditPost.subreddit == subreddit)
+
+            if project:
+                query = query.where(RedditPost.project == project)
+
+            results = session.execute(query.group_by(Classification.category)).all()
 
             return {category: count for category, count in results}
 
-    def get_total_cached_posts(self) -> int:
+    def get_total_cached_posts(self, project: Optional[str] = None) -> int:
         """Get total posts in cache."""
         with self.db.get_session() as session:
-            count = session.execute(
-                select(func.count(RedditPost.id))
-            ).scalar()
+            query = select(func.count(RedditPost.id))
+
+            if project:
+                query = query.where(RedditPost.project == project)
+
+            count = session.execute(query).scalar()
             return count or 0
 
-    def get_total_classifications(self) -> int:
+    def get_total_classifications(self, project: Optional[str] = None) -> int:
         """Get total classifications."""
         with self.db.get_session() as session:
-            count = session.execute(
-                select(func.count(Classification.id))
-            ).scalar()
+            query = select(func.count(Classification.id))
+
+            if project:
+                query = query.where(Classification.project == project)
+
+            count = session.execute(query).scalar()
             return count or 0

@@ -25,15 +25,25 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
-    # Target subreddits (comma-separated in .env)
+    # Target subreddits (comma-separated in .env) - DEPRECATED, use project-specific
     subreddits: str = ""
 
-    # Content topic/focus (used for classification relevance filtering)
+    # Content topic/focus - DEPRECATED, use project-specific
     topic: str = "AI and Large Language Models, particularly Claude and Claude Code related content"
 
-    # HackerNews settings
+    # HackerNews settings - DEPRECATED, use project-specific
     hn_default_keywords: str = "claude,anthropic,ai,artificial intelligence,llm"
     hn_fetch_limit: int = 100
+
+    # Project: ClaudeIA (AI/LLM content - podcast sourcing)
+    claudeia_topic: str = "AI and Large Language Models, particularly Claude and Claude Code related content"
+    claudeia_subreddits: str = ""
+    claudeia_hn_keywords: str = "claude,anthropic,ai,artificial intelligence,llm"
+
+    # Project: WineWorld (Wine industry - blog sourcing)
+    wineworld_topic: str = "Wine industry, viticulture, wine culture, wine tasting, and sommelier expertise"
+    wineworld_subreddits: str = ""
+    wineworld_hn_keywords: str = "wine,viticulture,vineyard,sommelier,winery"
 
     # MariaDB/MySQL (for caching classifications)
     mysql_host: str = "localhost"
@@ -68,17 +78,81 @@ class Settings(BaseSettings):
         """Check if MySQL credentials are configured."""
         return bool(self.mysql_user and self.mysql_password)
 
-    def get_subreddit_list(self) -> List[str]:
-        """Parse and return list of subreddits from comma-separated string."""
-        if not self.subreddits:
+    # Project-aware getters (NEW)
+    def get_project_topic(self, project: str = "default") -> str:
+        """
+        Get topic for specified project.
+
+        Args:
+            project: Project name (e.g., "claudeia", "wineworld", "default")
+
+        Returns:
+            Topic string for the project, falls back to claudeia_topic
+        """
+        if project == "default":
+            return self.claudeia_topic  # Fallback to ClaudeIA
+
+        attr = f"{project.lower()}_topic"
+        return getattr(self, attr, self.claudeia_topic)
+
+    def get_project_subreddits(self, project: str = "default") -> List[str]:
+        """
+        Get subreddit list for specified project.
+
+        Args:
+            project: Project name (e.g., "claudeia", "wineworld", "default")
+
+        Returns:
+            List of subreddit names (without 'r/' prefix)
+        """
+        if project == "default":
+            attr = "claudeia_subreddits"
+        else:
+            attr = f"{project.lower()}_subreddits"
+
+        subreddit_str = getattr(self, attr, "")
+        if not subreddit_str:
             return []
-        return [s.strip() for s in self.subreddits.split(",") if s.strip()]
+        return [s.strip() for s in subreddit_str.split(",") if s.strip()]
+
+    def get_project_hn_keywords(self, project: str = "default") -> List[str]:
+        """
+        Get HackerNews keywords for specified project.
+
+        Args:
+            project: Project name (e.g., "claudeia", "wineworld", "default")
+
+        Returns:
+            List of HN keywords for filtering posts
+        """
+        if project == "default":
+            attr = "claudeia_hn_keywords"
+        else:
+            attr = f"{project.lower()}_hn_keywords"
+
+        keywords_str = getattr(self, attr, "")
+        if not keywords_str:
+            return []
+        return [k.strip() for k in keywords_str.split(",") if k.strip()]
+
+    # Legacy methods (backward compatibility - use project-aware getters instead)
+    def get_subreddit_list(self) -> List[str]:
+        """
+        Parse and return list of subreddits from comma-separated string.
+
+        DEPRECATED: Use get_project_subreddits("default") instead.
+        This method is kept for backward compatibility.
+        """
+        return self.get_project_subreddits("default")
 
     def get_hn_keywords(self) -> List[str]:
-        """Parse and return list of HackerNews keywords from comma-separated string."""
-        if not self.hn_default_keywords:
-            return []
-        return [k.strip() for k in self.hn_default_keywords.split(",") if k.strip()]
+        """
+        Parse and return list of HackerNews keywords from comma-separated string.
+
+        DEPRECATED: Use get_project_hn_keywords("default") instead.
+        This method is kept for backward compatibility.
+        """
+        return self.get_project_hn_keywords("default")
 
     def ensure_directories(self) -> None:
         """Create output directories if they don't exist."""

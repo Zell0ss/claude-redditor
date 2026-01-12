@@ -29,13 +29,14 @@ class PostClassifier:
         with open(prompt_path, "r") as f:
             self.prompt_template = f.read()
 
-    def classify_posts(self, posts: List[RedditPost], batch_size: int = None) -> List[Classification]:
+    def classify_posts(self, posts: List[RedditPost], batch_size: int = None, project: str = 'default') -> List[Classification]:
         """
         Classify a list of posts using Claude API.
 
         Args:
             posts: List of RedditPost objects to classify
             batch_size: Number of posts per API request (default from settings)
+            project: Project name (default: 'default')
 
         Returns:
             List of Classification objects
@@ -48,12 +49,12 @@ class PostClassifier:
         # Process in batches
         for i in range(0, len(posts), batch_size):
             batch = posts[i : i + batch_size]
-            classifications = self._classify_batch(batch)
+            classifications = self._classify_batch(batch, project=project)
             all_classifications.extend(classifications)
 
         return all_classifications
 
-    def _classify_batch(self, posts: List[RedditPost]) -> List[Classification]:
+    def _classify_batch(self, posts: List[RedditPost], project: str = 'default') -> List[Classification]:
         """Classify a batch of posts with a single Claude API call."""
 
         # Prepare posts as JSON for the prompt
@@ -73,7 +74,7 @@ class PostClassifier:
         # Build the prompt
         from .config import settings
         prompt = self.prompt_template.replace("{posts_json}", posts_json)
-        prompt = prompt.replace("{topic}", settings.topic)
+        prompt = prompt.replace("{topic}", settings.get_project_topic(project))
 
         # Call Claude API
         print(f"🤖 Classifying {len(posts)} posts with {self.model}...")

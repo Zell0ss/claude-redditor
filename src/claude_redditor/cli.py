@@ -59,6 +59,11 @@ def scan(
         "--no-cache",
         help="Bypass database cache (classify all posts)"
     ),
+    project: str = typer.Option(
+        "default",
+        "--project", "-p",
+        help="Project name for multi-project support"
+    ),
 ):
     """
     Scan and analyze posts from a subreddit.
@@ -73,13 +78,13 @@ def scan(
     """
     # Determine which subreddits to analyze
     if subreddit.lower() == "all":
-        subreddits = settings.get_subreddit_list()
+        subreddits = settings.get_project_subreddits(project)
         if not subreddits:
             rprint("[red]✗ No subreddits configured[/red]")
-            rprint("[yellow]Set SUBREDDITS in .env file (comma-separated)[/yellow]")
+            rprint(f"[yellow]Set {project.upper()}_SUBREDDITS in .env file (comma-separated)[/yellow]")
             rprint("Example: SUBREDDITS=ClaudeAI,Claude,ClaudeCode\n")
             raise typer.Exit(1)
-        rprint(f"\n[cyan]Analyzing all configured subreddits:[/cyan] {', '.join(f'r/{s}' for s in subreddits)}\n")
+        rprint(f"\n[cyan]Analyzing all configured subreddits for project '{project}':[/cyan] {', '.join(f'r/{s}' for s in subreddits)}\n")
     else:
         subreddits = [subreddit]
 
@@ -125,11 +130,11 @@ def scan(
                 if no_cache:
                     rprint(f"[yellow]Cache bypassed[/yellow]")
                 rprint(f"[dim]Classifying {len(posts)} posts with Claude...[/dim]")
-                classifications = classifier.classify_posts(posts)
+                classifications = classifier.classify_posts(posts, project=project)
                 cache_stats = {'total': len(posts), 'cached': 0, 'new': len(classifications), 'cache_hit_rate': 0.0}
             else:
                 rprint(f"[dim]Checking cache and classifying new posts...[/dim]")
-                classifications, cache_stats = cached_engine.analyze_with_cache(posts_dicts, classifier)
+                classifications, cache_stats = cached_engine.analyze_with_cache(posts_dicts, classifier, source='reddit', project=project)
 
                 # Show cache stats
                 console.print(render_cache_stats_table(cache_stats))
@@ -153,7 +158,7 @@ def scan(
 
             # Save scan history if cache is enabled
             if not no_cache and settings.is_mysql_configured():
-                cached_engine.save_scan_result(sub, cache_stats, report.signal_ratio)
+                cached_engine.save_scan_result(sub, cache_stats, report.signal_ratio, source='reddit', project=project)
 
             reports.append(report)
 
@@ -203,6 +208,11 @@ def compare(
         "--export-json",
         help="Export reports to JSON files"
     ),
+    project: str = typer.Option(
+        "default",
+        "--project", "-p",
+        help="Project name for multi-project support"
+    ),
 ):
     """
     Compare signal/noise ratio across all configured subreddits.
@@ -214,15 +224,15 @@ def compare(
 
         reddit-analyzer compare --limit 30
     """
-    subreddits = settings.get_subreddit_list()
+    subreddits = settings.get_project_subreddits(project)
 
     if not subreddits:
         rprint("\n[red]✗ No subreddits configured[/red]")
-        rprint("[yellow]Set SUBREDDITS in .env file (comma-separated)[/yellow]")
+        rprint(f"[yellow]Set {project.upper()}_SUBREDDITS in .env file (comma-separated)[/yellow]")
         rprint("Example: SUBREDDITS=ClaudeAI,Claude,ClaudeCode\n")
         raise typer.Exit(1)
 
-    rprint(f"\n[bold cyan]Comparing {len(subreddits)} subreddits[/bold cyan]")
+    rprint(f"\n[bold cyan]Comparing {len(subreddits)} subreddits for project '{project}'[/bold cyan]")
     rprint(f"[dim]Analyzing {limit} {sort} posts from each...[/dim]\n")
 
     reports = []
@@ -241,7 +251,7 @@ def compare(
 
             # Classify
             classifier = create_classifier()
-            classifications = classifier.classify_posts(posts)
+            classifications = classifier.classify_posts(posts, project=project)
 
             # Filter
             classified_post_ids = {c.post_id for c in classifications}
@@ -398,6 +408,11 @@ def history(
         "--limit", "-l",
         help="Number of history entries to show"
     ),
+    project: Optional[str] = typer.Option(
+        None,
+        "--project", "-p",
+        help="Filter by project (optional)"
+    ),
 ):
     """
     Show scan history from database.
@@ -419,7 +434,7 @@ def history(
         db = DatabaseConnection(settings)
         repo = Repository(db)
 
-        history_data = repo.get_scan_history(subreddit, limit)
+        history_data = repo.get_scan_history(subreddit, limit, project)
 
         if not history_data:
             rprint("[yellow]No scan history found[/yellow]\n")
@@ -454,7 +469,13 @@ def history(
 
 
 @app.command(name="cache-stats")
-def cache_stats():
+def cache_stats(
+    project: Optional[str] = typer.Option(
+        None,
+        "--project", "-p",
+        help="Filter by project (optional)"
+    ),
+):
     """
     Show database cache statistics.
 
@@ -473,10 +494,11 @@ def cache_stats():
         db = DatabaseConnection(settings)
         repo = Repository(db)
 
-        total_posts = repo.get_total_cached_posts()
-        total_classifications = repo.get_total_classifications()
+        total_posts = repo.get_total_cached_posts(project)
+        total_classifications = repo.get_total_classifications(project)
 
         # Create panel
+        project_label = f" (Project: {project})" if project else ""
         stats_text = (
             f"[bold]Total Posts:[/bold] {total_posts:,}\n"
             f"[bold]Total Classifications:[/bold] {total_classifications:,}\n"
@@ -488,7 +510,7 @@ def cache_stats():
 
         panel = Panel(
             stats_text,
-            title="💾 Cache Statistics",
+            title=f"💾 Cache Statistics{project_label}",
             border_style="cyan"
         )
 
@@ -533,6 +555,11 @@ def scan_hn(
         "--no-cache",
         help="Bypass database cache (classify all posts)"
     ),
+    project: str = typer.Option(
+        "default",
+        "--project", "-p",
+        help="Project name for multi-project support"
+    ),
 ):
     """
     Scan and analyze posts from HackerNews.
@@ -552,8 +579,8 @@ def scan_hn(
 
     # Use default keywords from config if none provided
     if not keywords:
-        keywords = settings.get_hn_keywords()
-        rprint(f"[dim]Using default keywords: {', '.join(keywords)}[/dim]")
+        keywords = settings.get_project_hn_keywords(project)
+        rprint(f"[dim]Using default keywords for project '{project}': {', '.join(keywords)}[/dim]")
 
     rprint(f"\n[bold cyan]Analyzing HackerNews[/bold cyan]")
     rprint(f"[dim]Keywords: {', '.join(keywords)} | Limit: {limit} | Sort: {sort}[/dim]\n")
@@ -580,14 +607,15 @@ def scan_hn(
             if no_cache:
                 rprint(f"[yellow]Cache bypassed[/yellow]")
             rprint(f"[dim]Classifying {len(posts)} posts with Claude...[/dim]")
-            classifications = classifier.classify_posts(posts)
+            classifications = classifier.classify_posts(posts, project=project)
             cache_stats = {'total': len(posts), 'cached': 0, 'new': len(classifications), 'cache_hit_rate': 0.0}
         else:
             rprint(f"[dim]Checking cache and classifying new posts...[/dim]")
             classifications, cache_stats = cached_engine.analyze_with_cache(
                 posts_dicts,
                 classifier,
-                source='hackernews'
+                source='hackernews',
+                project=project
             )
 
             # Show cache stats
@@ -618,7 +646,8 @@ def scan_hn(
                 posts_classified=cache_stats['new'],
                 posts_cached=cache_stats['cached'],
                 signal_ratio=report.signal_ratio * 100,
-                source='hackernews'
+                source='hackernews',
+                project=project
             )
 
         # Display

@@ -258,7 +258,8 @@ class CachedAnalysisEngine:
         posts: List[Dict],
         classifier,
         model_version: Optional[str] = None,
-        source: str = 'reddit'
+        source: str = 'reddit',
+        project: str = 'default'
     ) -> Tuple[List[Classification], Dict]:
         """
         Analyze posts using cache (multi-source support).
@@ -274,6 +275,7 @@ class CachedAnalysisEngine:
             classifier: PostClassifier instance
             model_version: Claude model version (default: from config)
             source: Content source ('reddit' or 'hackernews')
+            project: Project name (default: 'default')
 
         Returns:
             (classifications, cache_stats)
@@ -302,7 +304,7 @@ class CachedAnalysisEngine:
                 )
                 for p in posts
             ]
-            classifications = classifier.classify_posts(posts_to_classify)
+            classifications = classifier.classify_posts(posts_to_classify, project=project)
             cache_stats = {
                 'total': len(posts),
                 'cached': 0,
@@ -317,7 +319,7 @@ class CachedAnalysisEngine:
         logger.info(f"Analyzing {len(post_ids)} posts (cache enabled)")
 
         # Check cache
-        cached_data = self.repo.get_cached_classifications(post_ids, source=source)
+        cached_data = self.repo.get_cached_classifications(post_ids, source=source, project=project)
         cached_ids = {c['post_id'] for c in cached_data}
 
         # Convert cached data to Classification objects
@@ -356,10 +358,10 @@ class CachedAnalysisEngine:
                 )
                 for p in to_classify
             ]
-            new_classifications = classifier.classify_posts(posts_to_classify)
+            new_classifications = classifier.classify_posts(posts_to_classify, project=project)
 
             # Save to DB
-            self.repo.save_posts(to_classify, source=source)
+            self.repo.save_posts(to_classify, source=source, project=project)
 
             # Convert to dicts for saving
             new_classifications_dicts = [
@@ -372,7 +374,7 @@ class CachedAnalysisEngine:
                 }
                 for c in new_classifications
             ]
-            self.repo.save_classifications(new_classifications_dicts, source=source, model_version=model_version)
+            self.repo.save_classifications(new_classifications_dicts, source=source, model_version=model_version, project=project)
             logger.info(f"Saved {len(new_classifications)} new classifications")
 
         # Calculate stats
@@ -398,7 +400,9 @@ class CachedAnalysisEngine:
         self,
         subreddit: str,
         cache_stats: Dict,
-        signal_ratio: float
+        signal_ratio: float,
+        source: str = 'reddit',
+        project: str = 'default'
     ):
         """Save scan result to history."""
         if self.cache_enabled:
@@ -407,7 +411,9 @@ class CachedAnalysisEngine:
                 posts_fetched=cache_stats['total'],
                 posts_classified=cache_stats['new'],
                 posts_cached=cache_stats['cached'],
-                signal_ratio=signal_ratio * 100  # Convert to percentage
+                signal_ratio=signal_ratio * 100,  # Convert to percentage
+                source=source,
+                project=project
             )
 
 
