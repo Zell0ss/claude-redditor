@@ -42,6 +42,17 @@ class CategoryEnum(str, Enum):
         """Check if a category is signal."""
         return category in cls.signal_categories()
 
+    @classmethod
+    def is_low_value(cls, category: "CategoryEnum") -> bool:
+        """
+        Check if category is NOISE or UNRELATED (low-value content).
+        Used to determine selftext truncation (500 chars vs 5000 chars).
+        """
+        return category in [
+            cls.MYSTICAL, cls.UNVERIFIED_CLAIM, cls.ENGAGEMENT_BAIT,  # NOISE
+            cls.UNRELATED  # Off-topic
+        ]
+
 
 # Red flag detection patterns
 RED_FLAG_PATTERNS = {

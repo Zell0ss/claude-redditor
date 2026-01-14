@@ -360,7 +360,17 @@ class CachedAnalysisEngine:
             ]
             new_classifications = classifier.classify_posts(posts_to_classify, project=project)
 
-            # Save to DB
+            # Apply category-based selftext truncation before saving
+            # NOISE/UNRELATED posts get truncated to 500 chars to save storage
+            from .config import settings
+            classification_map = {c.post_id: c.category for c in new_classifications}
+            for post_dict in to_classify:
+                category = classification_map.get(post_dict['id'])
+                if category and CategoryEnum.is_low_value(category):
+                    if post_dict.get('selftext'):
+                        post_dict['selftext'] = post_dict['selftext'][:settings.max_selftext_noise]
+
+            # Save to DB (with truncated selftext for NOISE/UNRELATED)
             self.repo.save_posts(to_classify, source=source, project=project)
 
             # Convert to dicts for saving

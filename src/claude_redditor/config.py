@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     # Behavior
     default_batch_size: int = 20  # Posts per Claude API request
     cache_ttl_hours: int = 24
-    max_lines_article: int = 5000  # Maximum characters for selftext/content
+    max_lines_article: int = 5000  # Max selftext for SIGNAL/META posts
+    max_selftext_noise: int = 500  # Max selftext for NOISE/UNRELATED posts
     debug: bool = False  # Enable SQL query logging
 
     # Paths
