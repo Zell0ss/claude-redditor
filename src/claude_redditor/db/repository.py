@@ -265,3 +265,79 @@ class Repository:
 
             count = session.execute(query).scalar()
             return count or 0
+
+    # ============ DIGEST ============
+
+    def get_signal_posts_for_digest(
+        self,
+        project: str,
+        limit: int = 15,
+        min_confidence: float = 0.7
+    ) -> List[Dict]:
+        """
+        Get top signal posts not yet sent in a digest.
+
+        Returns posts with:
+        - category in (technical, troubleshooting, research_verified)
+        - sent_in_digest_at IS NULL
+        - ordered by score DESC, confidence DESC
+
+        Args:
+            project: Project name
+            limit: Maximum number of posts
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of dicts with post, classification, and selftext_truncated flag
+        """
+        with self.db.get_session() as session:
+            results = session.execute(
+                select(RedditPost, Classification)
+                .join(Classification, RedditPost.id == Classification.post_id)
+                .where(Classification.project == project)
+                .where(Classification.category.in_(['technical', 'troubleshooting', 'research_verified']))
+                .where(Classification.sent_in_digest_at.is_(None))
+                .where(Classification.confidence >= min_confidence)
+                .order_by(RedditPost.score.desc(), Classification.confidence.desc())
+                .limit(limit)
+            ).all()
+
+            return [
+                {
+                    'post': post.to_dict(),
+                    'classification': classification.to_dict(),
+                    'selftext_truncated': len(post.selftext or '') == 5000
+                }
+                for post, classification in results
+            ]
+
+    def mark_posts_as_sent_in_digest(
+        self,
+        post_ids: List[str],
+        project: str
+    ) -> int:
+        """
+        Mark posts as sent in digest (set sent_in_digest_at = NOW()).
+
+        Args:
+            post_ids: List of post IDs to mark
+            project: Project name
+
+        Returns:
+            Number of rows updated
+        """
+        if not post_ids:
+            return 0
+
+        from sqlalchemy import update
+
+        with self.db.get_session() as session:
+            result = session.execute(
+                update(Classification)
+                .where(Classification.post_id.in_(post_ids))
+                .where(Classification.project == project)
+                .values(sent_in_digest_at=func.now())
+            )
+            session.commit()
+            logger.info(f"Marked {result.rowcount} posts as sent in digest (project: {project})")
+            return result.rowcount

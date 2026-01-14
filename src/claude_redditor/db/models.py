@@ -105,6 +105,11 @@ class Classification(Base):
     reasoning = Column(Text)
     model_version = Column(String(50), default='claude-haiku-4-5-20251001')
     classified_at = Column(TIMESTAMP, server_default=func.now(), index=True)
+    sent_in_digest_at = Column(
+        TIMESTAMP,
+        nullable=True,
+        comment='When this post was included in a daily digest email'
+    )
 
     # UNIQUE constraint on (post_id, project)
     __table_args__ = (
