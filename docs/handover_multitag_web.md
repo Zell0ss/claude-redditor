@@ -1,5 +1,38 @@
 # 🎯 Roadmap ClaudeRedditor - Para Claude Code
 
+---
+
+## 📌 ESTADO ACTUAL (2026-01-17)
+
+**Sprints completados:**
+- ✅ Sprint 0: Schema (migration 006 ejecutada)
+- ✅ Sprint 1: Multi-tags en clasificador (topic_tags + format_tag funcionando)
+- ✅ Sprint 2: JSON export (`--format json/markdown/both`, symlink `latest.json`)
+- ✅ Sprint 3: CLI de bookmarks (5 subcomandos: show, add, list, done, status)
+
+**Siguiente paso:** Sprint 4 - Web estática con Astro
+
+**Archivos clave modificados:**
+- `db/migrations/006_add_tags_and_bookmarks.sql` - Schema
+- `db/models.py` - ORM con Bookmark model
+- `core/models.py` - Classification dataclass con tags
+- `prompts/classify_posts.md` - Instrucciones de tags
+- `classifier.py` - Parse de topic_tags/format_tag
+- `db/repository.py` - CRUD de bookmarks + save tags
+- `cli.py` - bookmark subcommands + --format flag
+- `digest.py` - generate_json() + _build_story()
+
+**Comandos para probar:**
+```bash
+./reddit-analyzer scan ClaudeAI --limit 3 --no-cache --project claudeia  # Ver tags
+./reddit-analyzer digest --project claudeia --format json  # Genera JSON
+./reddit-analyzer bookmark show latest  # Ver stories
+./reddit-analyzer bookmark add 2026-01-17-001 --note "Test"
+./reddit-analyzer bookmark list
+```
+
+---
+
 ## Contexto general
 
 **Objetivo:** Evolucionar ClaudeRedditor para soportar multi-tags, generar JSON para una web estática, y permitir bookmarking de historias interesantes desde el CLI.

@@ -3,30 +3,35 @@
 ## Quick Context
 
 ```
-STATUS: ✅ Production | 8 CLI commands | Multi-project | Multi-source
+STATUS: ✅ Production | 8 CLI commands + bookmark subcommands | Multi-project | Multi-source | Multi-tags
 
-FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest
+FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON
 
 CLI: scan, scan-hn, compare, digest, config, init-db, history, cache-stats
+     bookmark show|add|list|done|status
 
 FILES:
-├─ cli.py              → Entry point, all commands
-├─ classifier.py       → Classification logic (batch=20)
+├─ cli.py              → Entry point, all commands + bookmark subcommands
+├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
 ├─ analyzer.py         → Metrics + CachedAnalysisEngine
-├─ digest.py           → Newsletter generation (Spanish)
+├─ digest.py           → Newsletter (MD) + JSON export for web
 ├─ content_fetcher.py  → Fetch full content if truncated
 ├─ config.py           → Settings (pydantic-settings)
-├─ db/repository.py    → All DB queries
+├─ db/repository.py    → All DB queries + bookmark CRUD
+├─ db/models.py        → ORM models (RedditPost, Classification, ScanHistory, Bookmark)
 ├─ scrapers/           → reddit.py (RSS/PRAW), hackernews.py (Firebase)
-├─ prompts/            → classify_posts.md, digest_article.md
+├─ prompts/            → classify_posts.md (with tags), digest_article.md
 
 DESIGN:
+- Multi-tags: topic_tags (array) + format_tag (single) per classification
 - Truncation: SIGNAL/META=5000ch, NOISE/UNRELATED=500ch (in analyzer.py:363-371)
 - Truncation detection: len(selftext)==5000 → fetch full content for digest
 - Multi-project: --project flag, isolated by `project` column in all tables
 - Categories: 10 (3 SIGNAL, 3 NOISE, 2 META, 1 OTHER, 1 UNRELATED)
 - Red flags: 6 patterns in core/enums.py
 - Signal ratio excludes UNRELATED posts
+- JSON digest: outputs/web/{date}.json + latest.json symlink
+- Bookmarks: denormalized (story data copied at bookmark time)
 
 DEPS: Anthropic API (req), MariaDB (opt but recommended), Reddit API (opt, RSS fallback)
 ```
@@ -42,6 +47,13 @@ source .venv/bin/activate
 ./reddit-analyzer scan ClaudeAI --limit 20
 ./reddit-analyzer scan-hn -k claude --limit 20
 ./reddit-analyzer digest --project claudeia --dry-run
+./reddit-analyzer digest --project claudeia --format json  # JSON for web
+
+# Bookmarks
+./reddit-analyzer bookmark show latest
+./reddit-analyzer bookmark add 2026-01-17-003 --note "Interesting"
+./reddit-analyzer bookmark list --status to_read
+./reddit-analyzer bookmark done 2026-01-17-003
 
 # Database
 ./reddit-analyzer init-db
@@ -59,6 +71,8 @@ source .venv/bin/activate
 | Add scraper source | `scrapers/` (inherit from `base.py`) |
 | Digest format | `digest.py` + `prompts/digest_article.md` |
 | Settings/env vars | `config.py` + `.env` |
+| Bookmark commands | `cli.py` (bookmark_app) + `db/repository.py` |
+| JSON web output | `digest.py` (generate_json) → `outputs/web/` |
 
 ## Non-Obvious Design Decisions
 

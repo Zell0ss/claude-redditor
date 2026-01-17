@@ -158,11 +158,16 @@ El digest genera un newsletter en español llamado "La Gaceta IA" con los posts 
 | `scan <subreddit>` | Escanea un subreddit de Reddit |
 | `scan-hn` | Escanea HackerNews por keywords |
 | `compare` | Compara signal ratio entre subreddits |
-| `digest` | Genera el newsletter diario |
+| `digest` | Genera el newsletter diario (markdown/json/both) |
 | `config` | Muestra configuración actual |
 | `init-db` | Inicializa/migra la base de datos |
 | `history` | Muestra clasificaciones históricas |
 | `cache-stats` | Estadísticas del caché |
+| `bookmark show <date>` | Ver stories de un digest JSON |
+| `bookmark add <id>` | Añadir bookmark con notas |
+| `bookmark list` | Listar bookmarks (filtrar por status) |
+| `bookmark done <id>` | Marcar bookmark como completado |
+| `bookmark status <id> <status>` | Cambiar estado del bookmark |
 
 ---
 
@@ -196,16 +201,26 @@ El digest genera un newsletter en español llamado "La Gaceta IA" con los posts 
 
 ## Estado actual (Enero 2025)
 
-- ✅ 8 comandos CLI funcionando
+- ✅ 8 comandos CLI + 5 subcomandos bookmark
 - ✅ Multi-proyecto operativo
 - ✅ Reddit + HackerNews como fuentes
 - ✅ Caché MariaDB
-- ✅ Digest en español
+- ✅ Digest en español (markdown)
 - ✅ Integración N8N documentada
+- ✅ **Multi-tags**: topic_tags (array) + format_tag (single) en clasificaciones
+- ✅ **JSON export**: `digest --format json` genera `outputs/web/{date}.json` + `latest.json` symlink
+- ✅ **Bookmarks CLI**: show, add, list, done, status
+
+**Roadmap activo** (ver `docs/handover_multitag_web.md`):
+- ✅ Sprint 0: Schema (migration 006)
+- ✅ Sprint 1: Multi-tags en clasificador
+- ✅ Sprint 2: JSON export
+- ✅ Sprint 3: CLI de bookmarks
+- ⏳ Sprint 4: Web estática con Astro
+- ⏳ Sprint 5: Automatización con cron
 
 **Posibles mejoras futuras**:
 - Más fuentes (Twitter/X, newsletters, blogs)
-- Dashboard web
 - Alertas en tiempo real
 - Clasificación con embeddings (reducir costes API)
 
