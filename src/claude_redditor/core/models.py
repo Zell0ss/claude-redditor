@@ -59,6 +59,8 @@ class Classification:
     confidence: float
     red_flags: List[str] = field(default_factory=list)
     reasoning: str = ""
+    topic_tags: List[str] = field(default_factory=list)
+    format_tag: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -68,6 +70,8 @@ class Classification:
             "confidence": self.confidence,
             "red_flags": self.red_flags,
             "reasoning": self.reasoning,
+            "topic_tags": self.topic_tags,
+            "format_tag": self.format_tag,
         }
 
 

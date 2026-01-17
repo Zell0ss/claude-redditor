@@ -13,7 +13,7 @@ from .classifier import create_classifier
 from .analyzer import create_analyzer, create_cached_engine
 from .reporter import create_reporter
 from .config import settings
-from .cli_helpers import ensure_mysql_configured, render_cache_stats_table, handle_scan_error
+from .cli_helpers import ensure_mysql_configured, render_cache_stats_table, handle_scan_error, render_classifications_with_tags
 
 app = typer.Typer(
     name="reddit-analyzer",
@@ -146,6 +146,10 @@ def scan(
 
             if len(filtered_posts) != len(posts):
                 rprint(f"[yellow]⚠ {len(posts) - len(filtered_posts)} posts failed classification[/yellow]")
+
+            # Show classifications with tags
+            posts_dict = {p.id: p.title for p in posts}
+            render_classifications_with_tags(classifications, posts_dict)
 
             # Analyze
             analyzer = create_analyzer()
@@ -629,6 +633,10 @@ def scan_hn(
         if len(filtered_posts) != len(posts):
             rprint(f"[yellow]⚠ {len(posts) - len(filtered_posts)} posts failed classification[/yellow]")
 
+        # Show classifications with tags
+        posts_dict = {p.id: p.title for p in posts}
+        render_classifications_with_tags(classifications, posts_dict)
+
         # Analyze
         analyzer = create_analyzer()
         report = analyzer.analyze(
@@ -693,6 +701,11 @@ def digest(
         0.7,
         "--min-confidence",
         help="Minimum classification confidence threshold (0.0-1.0)"
+    ),
+    format: str = typer.Option(
+        "markdown",
+        "--format", "-f",
+        help="Output format: 'markdown' (default), 'json' (for web), or 'both'"
     ),
 ):
     """
@@ -763,25 +776,46 @@ def digest(
             rprint("\n[dim]Run without --dry-run to generate the digest[/dim]\n")
             raise typer.Exit(0)
 
+        # Validate format
+        if format not in ['markdown', 'json', 'both']:
+            rprint(f"[red]Invalid format '{format}'. Use 'markdown', 'json', or 'both'[/red]")
+            raise typer.Exit(1)
+
         # Generate digest
         rprint(f"\n[bold cyan]Generating digest for project '{project}'[/bold cyan]")
-        rprint(f"[dim]Limit: {limit} posts | Min confidence: {min_confidence:.0%}[/dim]\n")
+        rprint(f"[dim]Limit: {limit} posts | Min confidence: {min_confidence:.0%} | Format: {format}[/dim]\n")
 
         generator = DigestGenerator(repo)
 
-        output_path = generator.generate(
-            project=project,
-            limit=limit,
-            output_dir=output_dir,
-            show_progress=True
-        )
+        output_paths = []
+
+        if format in ['markdown', 'both']:
+            md_path = generator.generate(
+                project=project,
+                limit=limit,
+                output_dir=output_dir,
+                show_progress=True
+            )
+            output_paths.append(('markdown', md_path))
+
+        if format in ['json', 'both']:
+            json_path = generator.generate_json(
+                project=project,
+                limit=limit,
+                show_progress=(format == 'json')  # Only show progress if not already shown for markdown
+            )
+            output_paths.append(('json', json_path))
 
         rprint(f"\n[bold green]✓ Digest generated successfully![/bold green]")
-        rprint(f"[dim]Output: {output_path}[/dim]")
+        for fmt, path in output_paths:
+            rprint(f"[dim]{fmt}: {path}[/dim]")
 
-        # Print just the path on a clean line for N8N to capture
-        print(f"\n{output_path}")
+        # Print paths for N8N to capture
+        for _, path in output_paths:
+            print(f"\n{path}")
 
+    except typer.Exit:
+        raise  # Re-raise typer.Exit without catching it
     except ValueError as e:
         rprint(f"\n[yellow]{e}[/yellow]")
         rprint("[dim]Run a scan first to populate signal posts[/dim]\n")
@@ -798,6 +832,296 @@ def version():
     rprint("Version: 0.1.0")
     rprint("Powered by Claude AI (Anthropic)")
     rprint("\nGitHub: https://github.com/Zell0ss/claude-redditor\n")
+
+
+# =============================================================================
+# BOOKMARK COMMANDS
+# =============================================================================
+
+bookmark_app = typer.Typer(
+    name="bookmark",
+    help="Manage bookmarks for interesting stories from digests"
+)
+app.add_typer(bookmark_app, name="bookmark")
+
+
+@bookmark_app.command("show")
+def bookmark_show(
+    date: str = typer.Argument(
+        ...,
+        help="Digest date (YYYY-MM-DD) or 'latest'"
+    ),
+):
+    """
+    Show all stories from a digest JSON file.
+
+    Examples:
+
+        reddit-analyzer bookmark show 2025-01-17
+
+        reddit-analyzer bookmark show latest
+    """
+    import json
+
+    web_dir = settings.output_dir / 'web'
+
+    if date == 'latest':
+        json_path = web_dir / 'latest.json'
+    else:
+        json_path = web_dir / f'{date}.json'
+
+    if not json_path.exists():
+        rprint(f"[red]Digest not found: {json_path}[/red]")
+        rprint(f"[dim]Run 'reddit-analyzer digest --format json' first[/dim]")
+        raise typer.Exit(1)
+
+    # Read JSON
+    data = json.loads(json_path.read_text())
+
+    rprint(f"\n[bold cyan]📰 Digest: {data['digest_id']}[/bold cyan]")
+    rprint(f"[dim]{data['story_count']} stories | Generated: {data['generated_at']}[/dim]\n")
+
+    for story in data['stories']:
+        # Format tags
+        topic_tags = ','.join(story.get('topic_tags', [])) or 'none'
+        format_tag = story.get('format_tag') or ''
+
+        # Category color
+        cat = story.get('category', '')
+        cat_color = "green" if cat in ['technical', 'troubleshooting', 'research_verified'] else "yellow"
+
+        rprint(f"[bold]{story['id']}[/bold]: [{cat_color}][{cat}][/{cat_color}] [cyan][{topic_tags}][/cyan]" +
+               (f" [magenta][{format_tag}][/magenta]" if format_tag else ""))
+        rprint(f"  {story['title'][:70]}{'...' if len(story['title']) > 70 else ''}")
+        rprint(f"  [dim]{story['url']}[/dim]")
+        rprint()
+
+
+@bookmark_app.command("add")
+def bookmark_add(
+    story_id: str = typer.Argument(
+        ...,
+        help="Story ID (e.g., '2025-01-17-003')"
+    ),
+    note: Optional[str] = typer.Option(
+        None,
+        "--note", "-n",
+        help="Optional note for this bookmark"
+    ),
+    status: str = typer.Option(
+        "to_read",
+        "--status", "-s",
+        help="Initial status: to_read, to_implement, done"
+    ),
+):
+    """
+    Add a story to bookmarks.
+
+    Examples:
+
+        reddit-analyzer bookmark add 2025-01-17-003
+
+        reddit-analyzer bookmark add 2025-01-17-003 --note "Interesting MCP server"
+
+        reddit-analyzer bookmark add 2025-01-17-003 --status to_implement
+    """
+    import json
+    from datetime import datetime
+
+    ensure_mysql_configured(settings)
+
+    # Validate status
+    if status not in ['to_read', 'to_implement', 'done']:
+        rprint(f"[red]Invalid status '{status}'. Use: to_read, to_implement, done[/red]")
+        raise typer.Exit(1)
+
+    # Extract date from story_id (format: YYYY-MM-DD-NNN)
+    try:
+        date_part = '-'.join(story_id.split('-')[:3])
+        datetime.strptime(date_part, '%Y-%m-%d')  # Validate format
+    except ValueError:
+        rprint(f"[red]Invalid story_id format: {story_id}[/red]")
+        rprint("[dim]Expected format: YYYY-MM-DD-NNN (e.g., 2025-01-17-003)[/dim]")
+        raise typer.Exit(1)
+
+    # Find the JSON file
+    json_path = settings.output_dir / 'web' / f'{date_part}.json'
+    if not json_path.exists():
+        rprint(f"[red]Digest not found: {json_path}[/red]")
+        raise typer.Exit(1)
+
+    # Find the story
+    data = json.loads(json_path.read_text())
+    story = next((s for s in data['stories'] if s['id'] == story_id), None)
+
+    if not story:
+        rprint(f"[red]Story not found: {story_id}[/red]")
+        rprint(f"[dim]Available IDs in this digest: {', '.join(s['id'] for s in data['stories'][:5])}...[/dim]")
+        raise typer.Exit(1)
+
+    # Save to database
+    from .db.connection import DatabaseConnection
+    from .db.repository import Repository
+
+    db = DatabaseConnection(settings)
+    repo = Repository(db)
+
+    try:
+        repo.add_bookmark(
+            story_id=story_id,
+            digest_date=date_part,
+            story_title=story['title'],
+            story_url=story.get('url', ''),
+            story_source=story.get('source', ''),
+            story_category=story.get('category', ''),
+            story_topic_tags=story.get('topic_tags', []),
+            story_format_tag=story.get('format_tag'),
+            notes=note,
+            status=status
+        )
+        rprint(f"[green]✓ Bookmarked: {story_id}[/green]")
+        rprint(f"  {story['title'][:60]}...")
+        if note:
+            rprint(f"  [dim]Note: {note}[/dim]")
+    except Exception as e:
+        if 'Duplicate' in str(e):
+            rprint(f"[yellow]Already bookmarked: {story_id}[/yellow]")
+        else:
+            rprint(f"[red]Error adding bookmark: {e}[/red]")
+            raise typer.Exit(1)
+
+
+@bookmark_app.command("list")
+def bookmark_list(
+    status: Optional[str] = typer.Option(
+        None,
+        "--status", "-s",
+        help="Filter by status: to_read, to_implement, done, all"
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit", "-l",
+        help="Maximum number of bookmarks to show"
+    ),
+):
+    """
+    List bookmarks from the database.
+
+    Examples:
+
+        reddit-analyzer bookmark list
+
+        reddit-analyzer bookmark list --status to_read
+
+        reddit-analyzer bookmark list --status to_implement --limit 10
+    """
+    ensure_mysql_configured(settings)
+
+    from .db.connection import DatabaseConnection
+    from .db.repository import Repository
+
+    db = DatabaseConnection(settings)
+    repo = Repository(db)
+
+    # Get bookmarks
+    bookmarks = repo.get_bookmarks(status=status if status != 'all' else None, limit=limit)
+
+    if not bookmarks:
+        rprint("[yellow]No bookmarks found[/yellow]")
+        if status:
+            rprint(f"[dim]Try without --status filter or with --status all[/dim]")
+        raise typer.Exit(0)
+
+    rprint(f"\n[bold cyan]📚 Bookmarks ({len(bookmarks)})[/bold cyan]\n")
+
+    # Status emoji mapping
+    status_emoji = {
+        'to_read': '📖',
+        'to_implement': '🔧',
+        'done': '✅'
+    }
+
+    for b in bookmarks:
+        emoji = status_emoji.get(b['status'], '❓')
+        tags = ','.join(b.get('story_topic_tags') or []) or 'none'
+        title = b.get('story_title', '')
+
+        rprint(f"{emoji} [bold]{b['story_id']}[/bold] [{b.get('story_category', '')}] [cyan][{tags}][/cyan]")
+        rprint(f"   {title[:65]}{'...' if len(title) > 65 else ''}")
+        if b.get('notes'):
+            rprint(f"   [dim]📝 {b['notes']}[/dim]")
+        rprint(f"   [dim]{b.get('story_url', '')}[/dim]")
+        rprint()
+
+
+@bookmark_app.command("done")
+def bookmark_done(
+    story_id: str = typer.Argument(
+        ...,
+        help="Story ID to mark as done"
+    ),
+):
+    """
+    Mark a bookmark as done.
+
+    Examples:
+
+        reddit-analyzer bookmark done 2025-01-17-003
+    """
+    ensure_mysql_configured(settings)
+
+    from .db.connection import DatabaseConnection
+    from .db.repository import Repository
+
+    db = DatabaseConnection(settings)
+    repo = Repository(db)
+
+    updated = repo.update_bookmark_status(story_id, 'done')
+
+    if updated:
+        rprint(f"[green]✓ Marked as done: {story_id}[/green]")
+    else:
+        rprint(f"[yellow]Bookmark not found: {story_id}[/yellow]")
+        raise typer.Exit(1)
+
+
+@bookmark_app.command("status")
+def bookmark_status(
+    story_id: str = typer.Argument(
+        ...,
+        help="Story ID to update"
+    ),
+    new_status: str = typer.Argument(
+        ...,
+        help="New status: to_read, to_implement, done"
+    ),
+):
+    """
+    Change bookmark status.
+
+    Examples:
+
+        reddit-analyzer bookmark status 2025-01-17-003 to_implement
+    """
+    ensure_mysql_configured(settings)
+
+    if new_status not in ['to_read', 'to_implement', 'done']:
+        rprint(f"[red]Invalid status '{new_status}'. Use: to_read, to_implement, done[/red]")
+        raise typer.Exit(1)
+
+    from .db.connection import DatabaseConnection
+    from .db.repository import Repository
+
+    db = DatabaseConnection(settings)
+    repo = Repository(db)
+
+    updated = repo.update_bookmark_status(story_id, new_status)
+
+    if updated:
+        rprint(f"[green]✓ Updated {story_id} → {new_status}[/green]")
+    else:
+        rprint(f"[yellow]Bookmark not found: {story_id}[/yellow]")
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

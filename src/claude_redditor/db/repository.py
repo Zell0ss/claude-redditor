@@ -3,7 +3,7 @@
 from typing import List, Dict, Optional
 from sqlalchemy import select, func
 from sqlalchemy.dialects.mysql import insert
-from .models import RedditPost, Classification, ScanHistory
+from .models import RedditPost, Classification, ScanHistory, Bookmark
 from .connection import DatabaseConnection
 from ..config import settings  # Import from parent directory
 import logging
@@ -91,7 +91,9 @@ class Repository:
                     confidence=cls_data['confidence'],
                     red_flags=cls_data.get('red_flags', []),
                     reasoning=cls_data.get('reasoning', ''),
-                    model_version=model_version
+                    model_version=model_version,
+                    topic_tags=cls_data.get('topic_tags', []),
+                    format_tag=cls_data.get('format_tag')
                 )
 
                 # On conflict: update
@@ -103,6 +105,8 @@ class Repository:
                     red_flags=stmt.inserted.red_flags,
                     reasoning=stmt.inserted.reasoning,
                     model_version=stmt.inserted.model_version,
+                    topic_tags=stmt.inserted.topic_tags,
+                    format_tag=stmt.inserted.format_tag,
                     classified_at=func.now()
                 )
 
@@ -341,3 +345,103 @@ class Repository:
             session.commit()
             logger.info(f"Marked {result.rowcount} posts as sent in digest (project: {project})")
             return result.rowcount
+
+    # ============ BOOKMARKS ============
+
+    def add_bookmark(
+        self,
+        story_id: str,
+        digest_date: str,
+        story_title: str,
+        story_url: str = '',
+        story_source: str = '',
+        story_category: str = '',
+        story_topic_tags: List[str] = None,
+        story_format_tag: str = None,
+        notes: str = None,
+        status: str = 'to_read'
+    ) -> None:
+        """
+        Add a new bookmark.
+
+        Args:
+            story_id: Story ID (e.g., '2025-01-17-003')
+            digest_date: Date string (YYYY-MM-DD)
+            story_title: Title of the story
+            story_url: URL of the story
+            story_source: Source (e.g., 'r/ClaudeAI', 'HackerNews')
+            story_category: Category (e.g., 'technical')
+            story_topic_tags: List of topic tags
+            story_format_tag: Format tag
+            notes: Optional user notes
+            status: Initial status (to_read, to_implement, done)
+        """
+        from datetime import datetime
+
+        with self.db.get_session() as session:
+            bookmark = Bookmark(
+                story_id=story_id,
+                digest_date=datetime.strptime(digest_date, '%Y-%m-%d').date(),
+                story_title=story_title,
+                story_url=story_url,
+                story_source=story_source,
+                story_category=story_category,
+                story_topic_tags=story_topic_tags or [],
+                story_format_tag=story_format_tag,
+                notes=notes,
+                status=status
+            )
+            session.add(bookmark)
+            session.commit()
+            logger.info(f"Added bookmark: {story_id}")
+
+    def get_bookmarks(
+        self,
+        status: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Dict]:
+        """
+        Get bookmarks, optionally filtered by status.
+
+        Args:
+            status: Filter by status (to_read, to_implement, done) or None for all
+            limit: Maximum number of bookmarks to return
+
+        Returns:
+            List of bookmark dicts
+        """
+        with self.db.get_session() as session:
+            query = select(Bookmark).order_by(Bookmark.bookmarked_at.desc())
+
+            if status:
+                query = query.where(Bookmark.status == status)
+
+            query = query.limit(limit)
+
+            result = session.execute(query)
+            bookmarks = result.scalars().all()
+
+            # Convert to dicts before session closes
+            return [b.to_dict() for b in bookmarks]
+
+    def update_bookmark_status(self, story_id: str, new_status: str) -> bool:
+        """
+        Update bookmark status.
+
+        Args:
+            story_id: Story ID to update
+            new_status: New status (to_read, to_implement, done)
+
+        Returns:
+            True if updated, False if not found
+        """
+        from sqlalchemy import update
+
+        with self.db.get_session() as session:
+            result = session.execute(
+                update(Bookmark)
+                .where(Bookmark.story_id == story_id)
+                .values(status=new_status)
+            )
+            session.commit()
+            return result.rowcount > 0

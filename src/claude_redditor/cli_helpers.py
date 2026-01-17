@@ -69,3 +69,45 @@ def handle_scan_error(error: Exception, source: str = "scan") -> None:
     """
     rprint(f"[red]✗ Error during {source}: {error}[/red]\n")
     raise typer.Exit(1)
+
+
+def render_classifications_with_tags(classifications, posts_dict: Dict[str, str]) -> None:
+    """
+    Print classification results with tags in a compact format.
+
+    Args:
+        classifications: List of Classification objects
+        posts_dict: Dict mapping post_id to title
+    """
+    rprint()
+    rprint(f"[bold]Classified {len(classifications)} posts:[/bold]")
+
+    for c in classifications:
+        # Category with color
+        category_color = "green" if c.category.value in ['technical', 'troubleshooting', 'research_verified'] else \
+                        "red" if c.category.value in ['mystical', 'unverified_claim', 'engagement_bait'] else \
+                        "yellow"
+
+        # Format topic tags
+        topic_str = f"[cyan]{','.join(c.topic_tags)}[/cyan]" if c.topic_tags else "[dim]none[/dim]"
+
+        # Format format tag
+        format_str = f"[magenta]{c.format_tag}[/magenta]" if c.format_tag else ""
+
+        # Title (truncated)
+        title = posts_dict.get(c.post_id, c.post_id)
+        title_short = title[:50] + "..." if len(title) > 50 else title
+
+        # Output line: ✓ [category] [topic_tags] [format_tag] "title"
+        line_parts = [
+            "✓",
+            f"[{category_color}][{c.category.value}][/{category_color}]",
+            f"[{topic_str}]",
+        ]
+        if format_str:
+            line_parts.append(f"[{format_str}]")
+        line_parts.append(f'"{title_short}"')
+
+        rprint(" ".join(line_parts))
+
+    rprint()

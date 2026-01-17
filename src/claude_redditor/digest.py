@@ -362,3 +362,121 @@ class DigestGenerator:
 
         output_path.write_text('\n'.join(lines), encoding='utf-8')
         return output_path
+
+    def generate_json(
+        self,
+        project: str,
+        limit: int = 15,
+        show_progress: bool = True
+    ) -> Path:
+        """
+        Generate JSON digest for web consumption.
+
+        Args:
+            project: Project name (e.g., 'claudeia')
+            limit: Maximum number of posts to include
+            show_progress: Show progress bar
+
+        Returns:
+            Path to generated JSON file
+        """
+        # 1. Get signal posts not yet sent
+        posts_data = self.repo.get_signal_posts_for_digest(
+            project=project,
+            limit=limit
+        )
+
+        if not posts_data:
+            raise ValueError(f"No signal posts available for JSON digest in project '{project}'")
+
+        logger.info(f"Found {len(posts_data)} signal posts for JSON digest")
+
+        date_str = datetime.now().strftime('%Y-%m-%d')
+
+        # 2. Build stories array
+        stories = []
+
+        if show_progress:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Building JSON...", total=len(posts_data))
+
+                for idx, item in enumerate(posts_data, 1):
+                    story = self._build_story(item, date_str, idx)
+                    stories.append(story)
+                    progress.advance(task)
+        else:
+            for idx, item in enumerate(posts_data, 1):
+                story = self._build_story(item, date_str, idx)
+                stories.append(story)
+
+        # 3. Build digest JSON
+        digest_data = {
+            "digest_id": date_str,
+            "generated_at": datetime.now().isoformat() + "Z",
+            "project": project,
+            "story_count": len(stories),
+            "stories": stories
+        }
+
+        # 4. Write to outputs/web/
+        output_dir = settings.output_dir / 'web'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_path = output_dir / f"{date_str}.json"
+        output_path.write_text(json.dumps(digest_data, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        # 5. Update latest.json symlink
+        latest_path = output_dir / "latest.json"
+        if latest_path.exists() or latest_path.is_symlink():
+            latest_path.unlink()
+        latest_path.symlink_to(output_path.name)
+
+        logger.info(f"JSON digest generated: {output_path}")
+        return output_path
+
+    def _build_story(self, item: Dict, date_str: str, idx: int) -> Dict:
+        """
+        Build a single story dict for JSON output.
+
+        Args:
+            item: Dict with 'post', 'classification', 'selftext_truncated'
+            date_str: Date string (YYYY-MM-DD)
+            idx: Story index (1-based)
+
+        Returns:
+            Story dict for JSON
+        """
+        post = item['post']
+        classification = item['classification']
+
+        # Determine source
+        post_id = post.get('id', '')
+        if post_id.startswith('reddit_'):
+            source = f"r/{post.get('subreddit', 'unknown')}"
+        elif post_id.startswith('hn_'):
+            source = "HackerNews"
+        else:
+            source = "Unknown"
+
+        # Build story ID
+        story_id = f"{date_str}-{idx:03d}"
+
+        return {
+            "id": story_id,
+            "title": post.get('title', ''),
+            "source": source,
+            "author": post.get('author', 'unknown'),
+            "url": post.get('url', ''),
+            "score": post.get('score', 0),
+            "num_comments": post.get('num_comments', 0),
+            "category": classification.get('category', 'technical'),
+            "confidence": classification.get('confidence', 0),
+            "topic_tags": classification.get('topic_tags', []),
+            "format_tag": classification.get('format_tag'),
+            "red_flags": classification.get('red_flags', []),
+            "reasoning": classification.get('reasoning', '')
+        }

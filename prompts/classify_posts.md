@@ -42,6 +42,28 @@ Posts clearly outside this topic scope should be classified as `unrelated`.
 5. **cannot_explain**: "researchers can't explain", "mysterious", "unexplainable"
 6. **sensationalist**: "shocking", "mind-blowing", "you won't believe", "incredible discovery"
 
+## Topic Tags (multi-select, assign ALL that apply)
+
+- `prompts`: Prompt engineering, system prompts, techniques
+- `tools`: MCP servers, integrations, workflows, extensions
+- `models`: Model capabilities, comparisons, benchmarks
+- `research`: Papers, experiments, academic content
+- `coding`: Code examples, repositories, implementations
+- `buildable`: **Python-centric or pure prompts, no external dependencies or specific hardware. User can implement immediately.**
+- `hardware`: **Requires specific hardware (cameras, 3D printers, microcontrollers, IoT, sensors)**
+- `troubleshooting`: Bug fixes, solutions, workarounds
+- `news`: Announcements, releases, updates
+- `meta-tooling`: Tools about tools (productivity, automation)
+
+## Format Tag (single-select, pick ONE)
+
+- `tutorial`: Step-by-step guide
+- `showcase`: Show HN, project demos
+- `discussion`: Open-ended conversation
+- `question`: Help request, Q&A
+- `resource`: Lists, collections, curated resources
+- `code-snippet`: Contains extractable code or prompts (any language)
+
 ## Your Task
 
 Classify the following Reddit posts. Return a JSON array with one object per post.
@@ -60,13 +82,21 @@ JSON format:
 [
   {
     "post_id": "abc123",
-    "category": "mystical",
+    "category": "technical",
     "confidence": 0.95,
-    "red_flags": ["no_source", "precise_numbers_no_source"],
-    "reasoning": "Brief explanation of why this classification was chosen"
+    "red_flags": [],
+    "reasoning": "Brief explanation of why this classification was chosen",
+    "topic_tags": ["prompts", "buildable"],
+    "format_tag": "tutorial"
   }
 ]
 ```
+
+**Tag assignment rules:**
+- `topic_tags`: Assign ALL applicable tags (can be empty array for noise/unrelated)
+- `format_tag`: Pick exactly ONE (can be null for noise/unrelated)
+- For `buildable`: Only assign if Python-centric or pure prompts with no hardware requirements
+- For `hardware`: Assign if requires cameras, 3D printers, microcontrollers, sensors, etc.
 
 ## Important Rules
 

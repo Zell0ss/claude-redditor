@@ -1,7 +1,7 @@
 """SQLAlchemy models for Reddit Analyzer."""
 
 from sqlalchemy import (
-    Column, Integer, String, Text, TIMESTAMP,
+    Column, Integer, String, Text, TIMESTAMP, Date,
     Enum, DECIMAL, JSON, BigInteger, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.sql import func
@@ -110,6 +110,22 @@ class Classification(Base):
         nullable=True,
         comment='When this post was included in a daily digest email'
     )
+    topic_tags = Column(
+        JSON,
+        nullable=True,
+        comment='Array of topic tags: prompts, tools, models, research, coding, buildable, hardware, troubleshooting, news, meta-tooling'
+    )
+    format_tag = Column(
+        String(50),
+        nullable=True,
+        comment='Format tag: tutorial, showcase, discussion, question, resource, code-snippet'
+    )
+    digest_date = Column(
+        Date,
+        nullable=True,
+        index=True,
+        comment='Date of the digest this post was included in'
+    )
 
     # UNIQUE constraint on (post_id, project)
     __table_args__ = (
@@ -127,7 +143,10 @@ class Classification(Base):
             'confidence': float(self.confidence) if self.confidence else None,
             'red_flags': self.red_flags or [],
             'reasoning': self.reasoning,
-            'model_version': self.model_version
+            'model_version': self.model_version,
+            'topic_tags': self.topic_tags or [],
+            'format_tag': self.format_tag,
+            'digest_date': str(self.digest_date) if self.digest_date else None
         }
 
 
@@ -167,4 +186,57 @@ class ScanHistory(Base):
             'posts_classified': self.posts_classified,
             'posts_cached': self.posts_cached,
             'signal_ratio': float(self.signal_ratio) if self.signal_ratio else None
+        }
+
+
+class Bookmark(Base):
+    """
+    User bookmarks for interesting stories from digests.
+    Denormalized to avoid JOINs - data captured at bookmark time.
+    """
+    __tablename__ = 'bookmarks'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Story identification
+    story_id = Column(
+        String(50),
+        unique=True,
+        nullable=False,
+        comment='ID like "2025-01-17-003"'
+    )
+    digest_date = Column(Date, nullable=False, index=True, comment='Date of the digest')
+
+    # Bookmark metadata
+    bookmarked_at = Column(TIMESTAMP, server_default=func.now(), index=True)
+    notes = Column(Text, nullable=True, comment='User notes')
+    status = Column(
+        Enum('to_read', 'to_implement', 'done', name='bookmark_status_enum'),
+        nullable=False,
+        default='to_read',
+        index=True
+    )
+
+    # Denormalized story data (from JSON at bookmark time)
+    story_title = Column(Text, nullable=False)
+    story_url = Column(Text, nullable=True)
+    story_source = Column(String(50), nullable=True, comment='r/ClaudeAI or HackerNews')
+    story_category = Column(String(50), nullable=True, comment='technical, research, etc.')
+    story_topic_tags = Column(JSON, nullable=True, comment='Array of topic tags')
+    story_format_tag = Column(String(50), nullable=True, comment='tutorial, code-snippet, etc.')
+
+    def to_dict(self):
+        """Convert model to dict."""
+        return {
+            'story_id': self.story_id,
+            'digest_date': str(self.digest_date) if self.digest_date else None,
+            'bookmarked_at': str(self.bookmarked_at) if self.bookmarked_at else None,
+            'notes': self.notes,
+            'status': self.status,
+            'story_title': self.story_title,
+            'story_url': self.story_url,
+            'story_source': self.story_source,
+            'story_category': self.story_category,
+            'story_topic_tags': self.story_topic_tags or [],
+            'story_format_tag': self.story_format_tag
         }

@@ -102,6 +102,8 @@ class PostClassifier:
                         confidence=float(data["confidence"]),
                         red_flags=data.get("red_flags", []),
                         reasoning=data.get("reasoning", ""),
+                        topic_tags=data.get("topic_tags", []),
+                        format_tag=data.get("format_tag"),
                     )
                     classifications.append(classification)
                 except (KeyError, ValueError) as e:
