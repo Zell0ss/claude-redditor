@@ -1,12 +1,12 @@
-"""CLI helper functions for reddit-analyzer commands."""
+"""CLI helper functions for output formatting and common operations."""
 
 import typer
 from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
-from typing import Dict
+from typing import Dict, List
 
-from .config import Settings
+from ..config import Settings
 
 console = Console()
 
@@ -111,3 +111,57 @@ def render_classifications_with_tags(classifications, posts_dict: Dict[str, str]
         rprint(" ".join(line_parts))
 
     rprint()
+
+
+def render_bookmarks_list(bookmarks: List[Dict]) -> None:
+    """
+    Print bookmarks list with status emojis.
+
+    Args:
+        bookmarks: List of bookmark dicts from repository
+    """
+    rprint(f"\n[bold cyan]📚 Bookmarks ({len(bookmarks)})[/bold cyan]\n")
+
+    status_emoji = {
+        'to_read': '📖',
+        'to_implement': '🔧',
+        'done': '✅'
+    }
+
+    for b in bookmarks:
+        emoji = status_emoji.get(b['status'], '❓')
+        tags = ','.join(b.get('story_topic_tags') or []) or 'none'
+        title = b.get('story_title', '')
+
+        rprint(f"{emoji} [bold]{b['story_id']}[/bold] [{b.get('story_category', '')}] [cyan][{tags}][/cyan]")
+        rprint(f"   {title[:65]}{'...' if len(title) > 65 else ''}")
+        if b.get('notes'):
+            rprint(f"   [dim]📝 {b['notes']}[/dim]")
+        rprint(f"   [dim]{b.get('story_url', '')}[/dim]")
+        rprint()
+
+
+def render_digest_stories(stories: List[Dict], digest_id: str, generated_at: str) -> None:
+    """
+    Print digest stories for bookmark show command.
+
+    Args:
+        stories: List of story dicts from JSON
+        digest_id: Digest identifier (date)
+        generated_at: Generation timestamp
+    """
+    rprint(f"\n[bold cyan]📰 Digest: {digest_id}[/bold cyan]")
+    rprint(f"[dim]{len(stories)} stories | Generated: {generated_at}[/dim]\n")
+
+    for story in stories:
+        topic_tags = ','.join(story.get('topic_tags', [])) or 'none'
+        format_tag = story.get('format_tag') or ''
+
+        cat = story.get('category', '')
+        cat_color = "green" if cat in ['technical', 'troubleshooting', 'research_verified'] else "yellow"
+
+        rprint(f"[bold]{story['id']}[/bold]: [{cat_color}][{cat}][/{cat_color}] [cyan][{topic_tags}][/cyan]" +
+               (f" [magenta][{format_tag}][/magenta]" if format_tag else ""))
+        rprint(f"  {story['title'][:70]}{'...' if len(story['title']) > 70 else ''}")
+        rprint(f"  [dim]{story['url']}[/dim]")
+        rprint()

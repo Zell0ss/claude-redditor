@@ -11,7 +11,14 @@ CLI: scan, scan-hn, compare, digest, config, init-db, history, cache-stats
      bookmark show|add|list|done|status
 
 FILES:
-├─ cli.py              → Entry point, all commands + bookmark subcommands
+├─ cli/                → CLI commands (Typer best practices)
+│  ├─ __init__.py      → Main app, aggregates subcommands
+│  ├─ scan.py          → scan, scan-hn, compare
+│  ├─ digest_cmd.py    → digest command
+│  ├─ bookmark.py      → bookmark show|add|list|done|status
+│  ├─ db.py            → init-db, history, cache-stats
+│  ├─ info.py          → config, version
+│  └─ helpers.py       → Output formatting (Rich)
 ├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
 ├─ analyzer.py         → Metrics + CachedAnalysisEngine
 ├─ digest.py           → Newsletter (MD) + JSON export for web
@@ -64,15 +71,16 @@ source .venv/bin/activate
 
 | Task | File(s) |
 |------|---------|
-| Add CLI command | `cli.py` |
+| Add CLI command | `cli/` (new file or add to existing) |
 | Modify classification | `classifier.py` + `prompts/classify_posts.md` |
 | Change categories/red flags | `core/enums.py` |
 | DB queries/cache | `db/repository.py` |
 | Add scraper source | `scrapers/` (inherit from `base.py`) |
 | Digest format | `digest.py` + `prompts/digest_article.md` |
 | Settings/env vars | `config.py` + `.env` |
-| Bookmark commands | `cli.py` (bookmark_app) + `db/repository.py` |
+| Bookmark commands | `cli/bookmark.py` + `db/repository.py` |
 | JSON web output | `digest.py` (generate_json) → `outputs/web/` |
+| CLI output formatting | `cli/helpers.py` |
 
 ## Non-Obvious Design Decisions
 

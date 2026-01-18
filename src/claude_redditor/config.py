@@ -25,14 +25,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
-    # Target subreddits (comma-separated in .env) - DEPRECATED, use project-specific
-    subreddits: str = ""
-
-    # Content topic/focus - DEPRECATED, use project-specific
-    topic: str = "AI and Large Language Models, particularly Claude and Claude Code related content"
-
-    # HackerNews settings - DEPRECATED, use project-specific
-    hn_default_keywords: str = "claude,anthropic,ai,artificial intelligence,llm"
+    # HackerNews fetch limit
     hn_fetch_limit: int = 100
 
     # Project: ClaudeIA (AI/LLM content - podcast sourcing)
@@ -135,25 +128,6 @@ class Settings(BaseSettings):
         if not keywords_str:
             return []
         return [k.strip() for k in keywords_str.split(",") if k.strip()]
-
-    # Legacy methods (backward compatibility - use project-aware getters instead)
-    def get_subreddit_list(self) -> List[str]:
-        """
-        Parse and return list of subreddits from comma-separated string.
-
-        DEPRECATED: Use get_project_subreddits("default") instead.
-        This method is kept for backward compatibility.
-        """
-        return self.get_project_subreddits("default")
-
-    def get_hn_keywords(self) -> List[str]:
-        """
-        Parse and return list of HackerNews keywords from comma-separated string.
-
-        DEPRECATED: Use get_project_hn_keywords("default") instead.
-        This method is kept for backward compatibility.
-        """
-        return self.get_project_hn_keywords("default")
 
     def ensure_directories(self) -> None:
         """Create output directories if they don't exist."""
