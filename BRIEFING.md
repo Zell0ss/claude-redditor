@@ -85,15 +85,60 @@ Se excluyen los UNRELATED porque no son ruido del tema, simplemente están fuera
 
 ## Multi-proyecto
 
-El sistema soporta múltiples proyectos aislados. Cada proyecto tiene:
-- Sus propios subreddits
-- Su propio "topic" (descripción del tema para el clasificador)
-- Sus propias keywords de HackerNews
-- Datos aislados en la base de datos
+El sistema soporta múltiples proyectos aislados como **entidades autocontenidas**. Cada proyecto es un directorio en `projects/` con:
 
-**Decisión de diseño importante**: Un mismo post puede existir en dos proyectos con clasificaciones diferentes. Por ejemplo, un post sobre "IA aplicada al vino" podría ser:
-- `technical` en el proyecto "wineworld"
-- `unrelated` en el proyecto "claudeia"
+```
+projects/
+├── claudeia/
+│   ├── config.yaml        # topic, subreddits, hn_keywords
+│   └── prompts/
+│       ├── classify.md    # Prompt de clasificación (categorías específicas)
+│       └── digest.md      # Prompt de digest (formato newsletter)
+└── wineworld/
+    ├── config.yaml
+    └── prompts/
+        ├── classify.md    # Categorías específicas para vino
+        └── digest.md      # "La Gaceta del Vino"
+```
+
+### config.yaml de un proyecto
+
+```yaml
+name: claudeia
+description: "AI and LLM content, focused on Claude"
+topic: "AI and Large Language Models, particularly Claude and Claude Code"
+
+sources:
+  reddit:
+    subreddits:
+      - ClaudeAI
+      - Claude
+      - ClaudeCode
+  hackernews:
+    keywords:
+      - claude
+      - anthropic
+      - ai
+      - llm
+```
+
+### Añadir un nuevo proyecto
+
+**Zero code changes** - solo crear directorio:
+
+1. Crear `projects/{nombre}/config.yaml`
+2. Crear `projects/{nombre}/prompts/classify.md` (copiar de existente y adaptar)
+3. Crear `projects/{nombre}/prompts/digest.md` (copiar de existente y adaptar)
+4. Usar `--project {nombre}` en comandos CLI
+
+El sistema **autodescubre** proyectos al escanear `projects/` buscando directorios con `config.yaml`.
+
+### Aislamiento de datos
+
+- Datos aislados en la base de datos (columna `project` en todas las tablas)
+- **Decisión de diseño importante**: Un mismo post puede existir en dos proyectos con clasificaciones diferentes. Por ejemplo, un post sobre "IA aplicada al vino" podría ser:
+  - `technical` en el proyecto "wineworld"
+  - `unrelated` en el proyecto "claudeia"
 
 Esto es intencional: la clasificación depende del contexto del proyecto.
 
@@ -173,11 +218,12 @@ El digest genera un newsletter en español llamado "La Gaceta IA" con los posts 
 
 ## Stack técnico
 
-- **Python 3.11+** con Click para CLI
+- **Python 3.11+** con **Typer** para CLI (estructura modular en `cli/`)
 - **Claude API** (Anthropic) para clasificación y generación
 - **MariaDB** para caché (opcional pero recomendado)
 - **SQLAlchemy** como ORM
-- **pydantic-settings** para configuración
+- **pydantic-settings** para configuración (solo secrets en `.env`)
+- **PyYAML** para configuración de proyectos
 - **Reddit**: RSS por defecto, PRAW si hay credenciales
 - **HackerNews**: Firebase API (sin auth, 500 req/min)
 
@@ -197,12 +243,19 @@ El digest genera un newsletter en español llamado "La Gaceta IA" con los posts 
 
 6. **N8N para automatización**: Se integra con N8N para ejecución diaria via cron
 
+7. **Proyectos como entidades autocontenidas**: Cada proyecto tiene su propio `config.yaml` y `prompts/`. Zero code changes para añadir un nuevo proyecto - solo crear directorio.
+
+8. **Prompts específicos por proyecto**: El proyecto de vino tiene categorías diferentes (tasting, winemaking, viticulture) que el de IA (technical, troubleshooting). Cada proyecto define sus propios prompts de clasificación y digest.
+
+9. **`.env` solo para secrets**: La configuración de proyectos (subreddits, topics, keywords) está en `projects/{name}/config.yaml`, no en variables de entorno.
+
 ---
 
-## Estado actual (Enero 2025)
+## Estado actual (Enero 2026)
 
-- ✅ 8 comandos CLI + 5 subcomandos bookmark
-- ✅ Multi-proyecto operativo
+- ✅ 8 comandos CLI + 5 subcomandos bookmark (Typer, estructura modular en `cli/`)
+- ✅ Multi-proyecto operativo con **auto-discovery**
+- ✅ Proyectos como entidades autocontenidas (`projects/{name}/`)
 - ✅ Reddit + HackerNews como fuentes
 - ✅ Caché MariaDB
 - ✅ Digest en español (markdown)
@@ -210,12 +263,14 @@ El digest genera un newsletter en español llamado "La Gaceta IA" con los posts 
 - ✅ **Multi-tags**: topic_tags (array) + format_tag (single) en clasificaciones
 - ✅ **JSON export**: `digest --format json` genera `outputs/web/{date}.json` + `latest.json` symlink
 - ✅ **Bookmarks CLI**: show, add, list, done, status
+- ✅ **ProjectLoader**: Auto-descubre proyectos desde `projects/`
 
 **Roadmap activo** (ver `docs/handover_multitag_web.md`):
 - ✅ Sprint 0: Schema (migration 006)
 - ✅ Sprint 1: Multi-tags en clasificador
 - ✅ Sprint 2: JSON export
 - ✅ Sprint 3: CLI de bookmarks
+- ✅ Sprint 3.5: Proyectos autocontenidos (config.yaml + prompts/)
 - ⏳ Sprint 4: Web estática con Astro
 - ⏳ Sprint 5: Automatización con cron
 
@@ -300,4 +355,4 @@ if item['selftext_truncated'] and post.get('url'):
 
 ---
 
-*Este briefing está actualizado a Enero 2025. Para detalles de implementación, consultar el código fuente.*
+*Este briefing está actualizado a Enero 2026. Para detalles de implementación, consultar el código fuente.*

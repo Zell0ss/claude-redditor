@@ -4,6 +4,7 @@ import typer
 from rich import print as rprint
 
 from ..config import settings
+from ..projects import project_loader
 
 app = typer.Typer()
 
@@ -45,17 +46,20 @@ def config():
         rprint(f"  Status: [yellow]Disabled[/yellow]")
         rprint(f"  [dim]Set MYSQL_* variables in .env to enable[/dim]")
 
-    # Projects
+    # Projects (auto-discovered)
     rprint(f"\n[bold]Configured Projects:[/bold]")
-    for project in ['claudeia', 'wineworld']:
-        subreddits = settings.get_project_subreddits(project)
-        hn_keywords = settings.get_project_hn_keywords(project)
-        if subreddits or hn_keywords:
-            rprint(f"  [cyan]{project}[/cyan]:")
-            if subreddits:
-                rprint(f"    Subreddits: {', '.join(f'r/{s}' for s in subreddits)}")
-            if hn_keywords:
-                rprint(f"    HN Keywords: {', '.join(hn_keywords)}")
+    projects = project_loader.list_projects()
+    if projects:
+        for project_name in projects:
+            proj = project_loader.load(project_name)
+            rprint(f"  [cyan]{project_name}[/cyan]: {proj.description}")
+            if proj.subreddits:
+                rprint(f"    Subreddits: {', '.join(f'r/{s}' for s in proj.subreddits)}")
+            if proj.hn_keywords:
+                rprint(f"    HN Keywords: {', '.join(proj.hn_keywords)}")
+    else:
+        rprint(f"  [yellow]No projects found[/yellow]")
+        rprint(f"  [dim]Create projects/ directory with project folders[/dim]")
 
     # Behavior
     rprint(f"\n[bold]Behavior:[/bold]")

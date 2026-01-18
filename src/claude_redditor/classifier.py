@@ -1,12 +1,12 @@
 """Claude-based post classification."""
 
 import json
-from pathlib import Path
-from typing import List
+from typing import List, Dict
 
 from anthropic import Anthropic
 
 from .config import settings
+from .projects import project_loader
 from .core.models import RedditPost, Classification
 from .core.enums import CategoryEnum
 
@@ -24,10 +24,8 @@ class PostClassifier:
         self.client = Anthropic(api_key=settings.anthropic_api_key)
         self.model = settings.anthropic_model
 
-        # Load classification prompt
-        prompt_path = Path(__file__).parent.parent.parent / "prompts" / "classify_posts.md"
-        with open(prompt_path, "r") as f:
-            self.prompt_template = f.read()
+        # Cache for loaded prompts per project
+        self._prompt_cache: Dict[str, str] = {}
 
     def classify_posts(self, posts: List[RedditPost], batch_size: int = None, project: str = 'default') -> List[Classification]:
         """
@@ -54,8 +52,25 @@ class PostClassifier:
 
         return all_classifications
 
+    def _get_prompt_template(self, project: str) -> str:
+        """
+        Get the classification prompt template for a project.
+
+        Args:
+            project: Project name
+
+        Returns:
+            Prompt template string
+        """
+        if project not in self._prompt_cache:
+            self._prompt_cache[project] = project_loader.get_prompt(project, 'classify')
+        return self._prompt_cache[project]
+
     def _classify_batch(self, posts: List[RedditPost], project: str = 'default') -> List[Classification]:
         """Classify a batch of posts with a single Claude API call."""
+
+        # Load project configuration
+        proj = project_loader.load(project)
 
         # Prepare posts as JSON for the prompt
         posts_data = []
@@ -71,10 +86,10 @@ class PostClassifier:
 
         posts_json = json.dumps(posts_data, indent=2)
 
-        # Build the prompt
-        from .config import settings
-        prompt = self.prompt_template.replace("{posts_json}", posts_json)
-        prompt = prompt.replace("{topic}", settings.get_project_topic(project))
+        # Build the prompt from project-specific template
+        prompt_template = self._get_prompt_template(project)
+        prompt = prompt_template.replace("{posts_json}", posts_json)
+        prompt = prompt.replace("{topic}", proj.topic)
 
         # Call Claude API
         print(f"🤖 Classifying {len(posts)} posts with {self.model}...")

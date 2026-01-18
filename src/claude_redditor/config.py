@@ -1,7 +1,7 @@
 """Application configuration using pydantic-settings."""
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,16 +27,6 @@ class Settings(BaseSettings):
 
     # HackerNews fetch limit
     hn_fetch_limit: int = 100
-
-    # Project: ClaudeIA (AI/LLM content - podcast sourcing)
-    claudeia_topic: str = "AI and Large Language Models, particularly Claude and Claude Code related content"
-    claudeia_subreddits: str = ""
-    claudeia_hn_keywords: str = "claude,anthropic,ai,artificial intelligence,llm"
-
-    # Project: WineWorld (Wine industry - blog sourcing)
-    wineworld_topic: str = "Wine industry, viticulture, wine culture, wine tasting, and sommelier expertise"
-    wineworld_subreddits: str = ""
-    wineworld_hn_keywords: str = "wine,viticulture,vineyard,sommelier,winery"
 
     # MariaDB/MySQL (for caching classifications)
     mysql_host: str = "localhost"
@@ -71,63 +61,6 @@ class Settings(BaseSettings):
     def is_mysql_configured(self) -> bool:
         """Check if MySQL credentials are configured."""
         return bool(self.mysql_user and self.mysql_password)
-
-    # Project-aware getters (NEW)
-    def get_project_topic(self, project: str = "default") -> str:
-        """
-        Get topic for specified project.
-
-        Args:
-            project: Project name (e.g., "claudeia", "wineworld", "default")
-
-        Returns:
-            Topic string for the project, falls back to claudeia_topic
-        """
-        if project == "default":
-            return self.claudeia_topic  # Fallback to ClaudeIA
-
-        attr = f"{project.lower()}_topic"
-        return getattr(self, attr, self.claudeia_topic)
-
-    def get_project_subreddits(self, project: str = "default") -> List[str]:
-        """
-        Get subreddit list for specified project.
-
-        Args:
-            project: Project name (e.g., "claudeia", "wineworld", "default")
-
-        Returns:
-            List of subreddit names (without 'r/' prefix)
-        """
-        if project == "default":
-            attr = "claudeia_subreddits"
-        else:
-            attr = f"{project.lower()}_subreddits"
-
-        subreddit_str = getattr(self, attr, "")
-        if not subreddit_str:
-            return []
-        return [s.strip() for s in subreddit_str.split(",") if s.strip()]
-
-    def get_project_hn_keywords(self, project: str = "default") -> List[str]:
-        """
-        Get HackerNews keywords for specified project.
-
-        Args:
-            project: Project name (e.g., "claudeia", "wineworld", "default")
-
-        Returns:
-            List of HN keywords for filtering posts
-        """
-        if project == "default":
-            attr = "claudeia_hn_keywords"
-        else:
-            attr = f"{project.lower()}_hn_keywords"
-
-        keywords_str = getattr(self, attr, "")
-        if not keywords_str:
-            return []
-        return [k.strip() for k in keywords_str.split(",") if k.strip()]
 
     def ensure_directories(self) -> None:
         """Create output directories if they don't exist."""

@@ -1,0 +1,21 @@
+name: claudeia
+description: "AI and LLM content, focused on Claude and Claude Code"
+
+topic: "AI and Large Language Models, particularly Claude and Claude Code related content"
+
+sources:
+  reddit:
+    subreddits:
+      - ClaudeAI
+      - Claude
+      - ClaudeCode
+      - ClaudeExplorers
+      - LocalLLaMA
+  hackernews:
+    keywords:
+      - claude
+      - anthropic
+      - ai
+      - artificial intelligence
+      - llm
+      - machine learning

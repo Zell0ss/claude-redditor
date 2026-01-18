@@ -9,6 +9,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 import logging
 
 from .config import settings
+from .projects import project_loader
 from .db.repository import Repository
 from .content_fetcher import fetch_full_content
 
@@ -18,21 +19,24 @@ logger = logging.getLogger(__name__)
 class DigestGenerator:
     """Generate daily digest of top signal posts."""
 
-    def __init__(self, repo: Repository):
+    def __init__(self, repo: Repository, project: str = 'claudeia'):
         """
         Initialize digest generator.
 
         Args:
             repo: Repository instance for database access
+            project: Project name for loading prompts
         """
         self.repo = repo
+        self.project = project
         self.client = Anthropic(api_key=settings.anthropic_api_key)
-        self.prompt_template = self._load_prompt_template()
+        self._prompt_cache: Dict[str, str] = {}
 
-    def _load_prompt_template(self) -> str:
-        """Load the digest prompt template."""
-        prompt_path = Path(__file__).parent.parent.parent / 'prompts' / 'digest_article.md'
-        return prompt_path.read_text()
+    def _get_prompt_template(self, project: str) -> str:
+        """Load the digest prompt template for a project."""
+        if project not in self._prompt_cache:
+            self._prompt_cache[project] = project_loader.get_prompt(project, 'digest')
+        return self._prompt_cache[project]
 
     def generate(
         self,
@@ -175,8 +179,9 @@ class DigestGenerator:
         else:
             source = 'Unknown'
 
-        # Prepare prompt
-        prompt = self.prompt_template.format(
+        # Prepare prompt using project-specific template
+        prompt_template = self._get_prompt_template(self.project)
+        prompt = prompt_template.format(
             title=post.get('title', 'Sin título'),
             source=source,
             subreddit=post.get('subreddit', 'N/A') or 'N/A',

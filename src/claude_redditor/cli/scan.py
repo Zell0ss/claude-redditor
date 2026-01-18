@@ -9,6 +9,7 @@ from ..classifier import create_classifier
 from ..analyzer import create_analyzer, create_cached_engine
 from ..reporter import create_reporter
 from ..config import settings
+from ..projects import project_loader
 from .helpers import (
     console,
     render_cache_stats_table,
@@ -74,11 +75,16 @@ def scan(
     """
     # Determine which subreddits to analyze
     if subreddit.lower() == "all":
-        subreddits = settings.get_project_subreddits(project)
+        try:
+            proj = project_loader.load(project)
+            subreddits = proj.subreddits
+        except FileNotFoundError as e:
+            rprint(f"[red]✗ {e}[/red]")
+            raise typer.Exit(1)
+
         if not subreddits:
             rprint("[red]✗ No subreddits configured[/red]")
-            rprint(f"[yellow]Set {project.upper()}_SUBREDDITS in .env file (comma-separated)[/yellow]")
-            rprint("Example: SUBREDDITS=ClaudeAI,Claude,ClaudeCode\n")
+            rprint(f"[yellow]Add subreddits to projects/{project}/config.yaml[/yellow]")
             raise typer.Exit(1)
         rprint(f"\n[cyan]Analyzing all configured subreddits for project '{project}':[/cyan] {', '.join(f'r/{s}' for s in subreddits)}\n")
     else:
@@ -217,19 +223,23 @@ def compare(
     """
     Compare signal/noise ratio across all configured subreddits.
 
-    This command analyzes all subreddits defined in the SUBREDDITS
-    environment variable and shows a comparison table.
+    This command analyzes all subreddits defined in the project's
+    config.yaml and shows a comparison table.
 
     Example:
 
         reddit-analyzer compare --limit 30
     """
-    subreddits = settings.get_project_subreddits(project)
+    try:
+        proj = project_loader.load(project)
+        subreddits = proj.subreddits
+    except FileNotFoundError as e:
+        rprint(f"[red]✗ {e}[/red]")
+        raise typer.Exit(1)
 
     if not subreddits:
         rprint("\n[red]✗ No subreddits configured[/red]")
-        rprint(f"[yellow]Set {project.upper()}_SUBREDDITS in .env file (comma-separated)[/yellow]")
-        rprint("Example: SUBREDDITS=ClaudeAI,Claude,ClaudeCode\n")
+        rprint(f"[yellow]Add subreddits to projects/{project}/config.yaml[/yellow]")
         raise typer.Exit(1)
 
     rprint(f"\n[bold cyan]Comparing {len(subreddits)} subreddits for project '{project}'[/bold cyan]")
@@ -339,9 +349,14 @@ def scan_hn(
 
         reddit-analyzer scan-hn -k ai --export-json
     """
-    # Use default keywords from config if none provided
+    # Use default keywords from project config if none provided
     if not keywords:
-        keywords = settings.get_project_hn_keywords(project)
+        try:
+            proj = project_loader.load(project)
+            keywords = proj.hn_keywords
+        except FileNotFoundError as e:
+            rprint(f"[red]✗ {e}[/red]")
+            raise typer.Exit(1)
         rprint(f"[dim]Using default keywords for project '{project}': {', '.join(keywords)}[/dim]")
 
     rprint(f"\n[bold cyan]Analyzing HackerNews[/bold cyan]")

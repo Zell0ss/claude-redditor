@@ -114,25 +114,23 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
 ```
 
-**Multi-Project Support**: Configure multiple independent projects with prefixed variables:
+**Multi-Project Support**: Projects are now self-contained directories in `projects/`:
 
-```bash
-# Project: ClaudeIA (AI/LLM content for podcast)
-CLAUDEIA_TOPIC="AI and Large Language Models, particularly Claude"
-CLAUDEIA_SUBREDDITS=ClaudeAI,Claude,ClaudeCode,ClaudeExplorers
-CLAUDEIA_HN_KEYWORDS=claude,anthropic,ai,llm
-
-# Project: WineWorld (Wine industry for blog)
-WINEWORLD_TOPIC="Wine industry, viticulture, wine tasting"
-WINEWORLD_SUBREDDITS=wine,winemaking,sommelier
-WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard,sommelier
+```
+projects/
+├── claudeia/           # AI/LLM content for podcast
+│   ├── config.yaml     # topic, subreddits, hn_keywords
+│   └── prompts/
+│       ├── classify.md # Classification prompt
+│       └── digest.md   # Newsletter generation prompt
+└── wineworld/          # Wine industry for blog
+    ├── config.yaml
+    └── prompts/
+        ├── classify.md
+        └── digest.md
 ```
 
-**Legacy (backward compatible)**: Single project configuration:
-```bash
-SUBREDDITS=ClaudeAI,Claude,ClaudeCode
-HN_DEFAULT_KEYWORDS=claude,anthropic,ai
-```
+Projects are **auto-discovered** - no code changes needed to add a new project. See [Adding a New Project](#adding-a-new-project) below.
 
 **Optional**: Add Reddit credentials for faster scraping (60 req/min vs 10 req/min):
 ```bash
@@ -202,23 +200,96 @@ The analyzer supports running multiple independent projects with isolated data a
 
 ### Key Features
 
+- **Auto-Discovery**: Projects are automatically discovered from `projects/` directory
+- **Self-Contained**: Each project has its own config.yaml and prompts/
 - **Project Isolation**: Complete data separation in database (`project` column)
-- **Independent Configs**: Each project has its own TOPIC, SUBREDDITS, HN_KEYWORDS
+- **Custom Prompts**: Each project can have domain-specific classification categories
+- **Zero Code Changes**: Add a new project by creating a directory - no code modifications needed
 - **Shared Infrastructure**: Single API key, database, and codebase
-- **Backward Compatible**: Existing scans continue working (assigned to "default" project)
 
-### Configuration Example
+### Project Structure
 
-```bash
-# In .env file
-CLAUDEIA_TOPIC="AI and Large Language Models"
-CLAUDEIA_SUBREDDITS=ClaudeAI,Claude,ClaudeCode
-CLAUDEIA_HN_KEYWORDS=claude,anthropic,ai,llm
+Each project is a directory in `projects/` with this structure:
 
-WINEWORLD_TOPIC="Wine industry and viticulture"
-WINEWORLD_SUBREDDITS=wine,winemaking,sommelier
-WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard
 ```
+projects/{name}/
+├── config.yaml         # Project configuration
+└── prompts/
+    ├── classify.md     # Classification prompt (categories, red flags)
+    └── digest.md       # Newsletter generation prompt
+```
+
+### config.yaml Format
+
+```yaml
+name: claudeia
+description: "AI and LLM content, focused on Claude and Claude Code"
+topic: "AI and Large Language Models, particularly Claude and Claude Code related content"
+
+sources:
+  reddit:
+    subreddits:
+      - ClaudeAI
+      - Claude
+      - ClaudeCode
+      - ClaudeExplorers
+      - LocalLLaMA
+  hackernews:
+    keywords:
+      - claude
+      - anthropic
+      - ai
+      - artificial intelligence
+      - llm
+      - machine learning
+```
+
+### Adding a New Project
+
+**Zero code changes required** - just create a directory:
+
+1. **Create project directory**:
+   ```bash
+   mkdir -p projects/myproject/prompts
+   ```
+
+2. **Create config.yaml**:
+   ```yaml
+   # projects/myproject/config.yaml
+   name: myproject
+   description: "My project description"
+   topic: "Topic context for classification"
+
+   sources:
+     reddit:
+       subreddits:
+         - subreddit1
+         - subreddit2
+     hackernews:
+       keywords:
+         - keyword1
+         - keyword2
+   ```
+
+3. **Create prompts** (copy from existing project and customize):
+   ```bash
+   cp projects/claudeia/prompts/classify.md projects/myproject/prompts/
+   cp projects/claudeia/prompts/digest.md projects/myproject/prompts/
+   # Edit to customize categories, red flags, newsletter format
+   ```
+
+4. **Verify auto-discovery**:
+   ```bash
+   ./reddit-analyzer config
+   # Should show your new project in "Configured Projects"
+   ```
+
+5. **Use the project**:
+   ```bash
+   ./reddit-analyzer scan all --project myproject --limit 20
+   ./reddit-analyzer scan-hn --project myproject --limit 50
+   ./reddit-analyzer digest --project myproject --dry-run
+   ```
 
 ### Usage Examples
 
@@ -238,6 +309,9 @@ WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard
 # Check cache stats per project
 ./reddit-analyzer cache-stats --project claudeia
 ./reddit-analyzer cache-stats --project wineworld
+
+# List all discovered projects
+./reddit-analyzer config
 ```
 
 ### Database Migration
@@ -656,7 +730,7 @@ The classifier uses Claude AI to analyze each post and assign a category based o
 
 5. **Confidence scoring** - Each classification includes a confidence score (0.0-1.0). Scores above 0.9 indicate clear-cut cases; scores between 0.5-0.8 indicate ambiguous content.
 
-For the complete classification prompt and rules, see [prompts/classify_posts.md](prompts/classify_posts.md).
+For the complete classification prompt and rules, see [projects/claudeia/prompts/classify.md](projects/claudeia/prompts/classify.md). Each project can customize its own classification categories.
 
 ### Categories
 
@@ -713,9 +787,10 @@ Signal Ratio = (technical + troubleshooting + research_verified) / total_relevan
 - **PRAW** - Reddit API wrapper (optional)
 - **feedparser** - RSS feed parsing (default mode)
 - **Anthropic SDK** - Claude Haiku for classification
-- **Typer** - CLI framework
+- **Typer** - CLI framework (modular structure in `cli/`)
 - **Rich** - Beautiful terminal output
 - **Pydantic** - Data validation and settings
+- **PyYAML** - Project configuration parsing
 - **SQLAlchemy** - Database ORM
 - **PyMySQL** - MariaDB/MySQL driver
 - **MariaDB/MySQL** - Cache database (optional)
@@ -727,6 +802,14 @@ Signal Ratio = (technical + troubleshooting + research_verified) / total_relevan
 ```
 reddit-analyzer/
 ├── src/claude_redditor/
+│   ├── cli/                   # CLI commands (Typer, modular structure)
+│   │   ├── __init__.py        # Main app, aggregates subcommands
+│   │   ├── scan.py            # scan, scan-hn, compare commands
+│   │   ├── digest_cmd.py      # digest command
+│   │   ├── bookmark.py        # bookmark show|add|list|done|status
+│   │   ├── db.py              # init-db, history, cache-stats
+│   │   ├── info.py            # config, version (auto-discovers projects)
+│   │   └── helpers.py         # Output formatting (Rich tables)
 │   ├── core/
 │   │   ├── models.py          # RedditPost, Classification, AnalysisReport
 │   │   └── enums.py           # CategoryEnum, red flag patterns
@@ -738,29 +821,38 @@ reddit-analyzer/
 │   ├── db/                    # MariaDB cache layer
 │   │   ├── connection.py      # SQLAlchemy connection pool
 │   │   ├── models.py          # Database models (tables)
-│   │   ├── repository.py      # Data access layer
+│   │   ├── repository.py      # Data access layer + bookmark CRUD
 │   │   └── migrations/
 │   │       ├── 001_initial_schema.sql
 │   │       ├── 002_multi_source.sql
 │   │       ├── 003_add_flair.sql
-│   │       └── 004_add_project_column.sql
-│   ├── config.py              # Settings management (pydantic-settings)
-│   ├── scraper.py             # DEPRECATED - backward compatibility wrapper
+│   │       ├── 004_add_project_column.sql
+│   │       ├── 005_add_digest_tracking.sql
+│   │       └── 006_add_multi_tags.sql
+│   ├── config.py              # Settings (pydantic-settings) - secrets only
+│   ├── projects.py            # ProjectLoader - auto-discovers projects/
 │   ├── classifier.py          # Claude-based classification with batching
 │   ├── analyzer.py            # Metrics generation with cache support
 │   ├── reporter.py            # Rich terminal output and JSON export
-│   ├── digest.py              # Daily digest generation (Spanish)
-│   ├── content_fetcher.py     # Fetch full content from truncated posts
-│   ├── cli_helpers.py         # Helper functions for CLI
-│   └── cli.py                 # Typer CLI entry point (8 commands)
-├── prompts/
-│   ├── classify_posts.md      # Classification system prompt
-│   └── digest_article.md      # Digest article generation prompt
+│   ├── digest.py              # Daily digest generation (MD + JSON)
+│   └── content_fetcher.py     # Fetch full content from truncated posts
+├── projects/                  # Self-contained project definitions
+│   ├── claudeia/              # AI/LLM content (podcast)
+│   │   ├── config.yaml        # topic, subreddits, hn_keywords
+│   │   └── prompts/
+│   │       ├── classify.md    # Classification prompt
+│   │       └── digest.md      # Newsletter generation prompt
+│   └── wineworld/             # Wine industry (blog)
+│       ├── config.yaml
+│       └── prompts/
+│           ├── classify.md
+│           └── digest.md
 ├── outputs/
 │   ├── cache/                 # Cached Reddit responses
 │   ├── classifications/       # Cached Claude classifications
 │   ├── reports/               # Generated JSON reports
-│   └── digests/               # Generated markdown digests
+│   ├── digests/               # Generated markdown digests
+│   └── web/                   # JSON exports for web (latest.json)
 ├── tests/                     # Test scripts for components
 │   ├── test_scraper.py
 │   ├── test_classifier.py
@@ -771,7 +863,7 @@ reddit-analyzer/
 ├── pyproject.toml             # Python package configuration
 ├── docs/
 │   └── N8N_INTEGRATION.md     # N8N automation guide
-└── .env.example               # Environment variables template
+└── .env.example               # Environment variables template (secrets only)
 ```
 
 ### Testing

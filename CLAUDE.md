@@ -17,23 +17,30 @@ FILES:
 │  ├─ digest_cmd.py    → digest command
 │  ├─ bookmark.py      → bookmark show|add|list|done|status
 │  ├─ db.py            → init-db, history, cache-stats
-│  ├─ info.py          → config, version
+│  ├─ info.py          → config, version (auto-discovers projects)
 │  └─ helpers.py       → Output formatting (Rich)
 ├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
 ├─ analyzer.py         → Metrics + CachedAnalysisEngine
 ├─ digest.py           → Newsletter (MD) + JSON export for web
 ├─ content_fetcher.py  → Fetch full content if truncated
-├─ config.py           → Settings (pydantic-settings)
+├─ config.py           → Settings (pydantic-settings) - secrets only
+├─ projects.py         → ProjectLoader - auto-discovers projects/
 ├─ db/repository.py    → All DB queries + bookmark CRUD
 ├─ db/models.py        → ORM models (RedditPost, Classification, ScanHistory, Bookmark)
 ├─ scrapers/           → reddit.py (RSS/PRAW), hackernews.py (Firebase)
-├─ prompts/            → classify_posts.md (with tags), digest_article.md
+projects/              → Self-contained project definitions
+├─ claudeia/           → AI/LLM content (podcast)
+│  ├─ config.yaml      → topic, subreddits, hn_keywords
+│  └─ prompts/         → classify.md, digest.md
+└─ wineworld/          → Wine industry (blog)
+   ├─ config.yaml
+   └─ prompts/
 
 DESIGN:
 - Multi-tags: topic_tags (array) + format_tag (single) per classification
 - Truncation: SIGNAL/META=5000ch, NOISE/UNRELATED=500ch (in analyzer.py:363-371)
 - Truncation detection: len(selftext)==5000 → fetch full content for digest
-- Multi-project: --project flag, isolated by `project` column in all tables
+- Multi-project: --project flag, projects auto-discovered from projects/ directory
 - Categories: 10 (3 SIGNAL, 3 NOISE, 2 META, 1 OTHER, 1 UNRELATED)
 - Red flags: 6 patterns in core/enums.py
 - Signal ratio excludes UNRELATED posts
@@ -72,12 +79,13 @@ source .venv/bin/activate
 | Task | File(s) |
 |------|---------|
 | Add CLI command | `cli/` (new file or add to existing) |
-| Modify classification | `classifier.py` + `prompts/classify_posts.md` |
-| Change categories/red flags | `core/enums.py` |
+| Modify classification | `projects/{name}/prompts/classify.md` |
+| Change categories/red flags | `core/enums.py` + project prompts |
 | DB queries/cache | `db/repository.py` |
 | Add scraper source | `scrapers/` (inherit from `base.py`) |
-| Digest format | `digest.py` + `prompts/digest_article.md` |
-| Settings/env vars | `config.py` + `.env` |
+| Digest format | `projects/{name}/prompts/digest.md` |
+| Settings/env vars | `config.py` + `.env` (secrets only) |
+| Add new project | `projects/{name}/config.yaml` + `prompts/` |
 | Bookmark commands | `cli/bookmark.py` + `db/repository.py` |
 | JSON web output | `digest.py` (generate_json) → `outputs/web/` |
 | CLI output formatting | `cli/helpers.py` |
@@ -96,6 +104,8 @@ source .venv/bin/activate
 
 6. **Project isolation**: All tables have `project` column, queries always filter by project
 
+7. **Projects as self-contained entities**: Each project in `projects/` has its own config.yaml and prompts/. Zero code changes to add a new project.
+
 ## Environment Variables
 
 ```bash
@@ -111,36 +121,47 @@ MYSQL_DATABASE=reddit_analyzer
 # Optional (enables PRAW mode for Reddit - faster)
 REDDIT_CLIENT_ID=...
 REDDIT_CLIENT_SECRET=...
-
-# Multi-project config
-CLAUDEIA_SUBREDDITS=ClaudeAI,Claude,ClaudeCode
-CLAUDEIA_TOPIC="AI and Large Language Models..."
-CLAUDEIA_HN_KEYWORDS=claude,anthropic,ai,llm
-
-WINEWORLD_SUBREDDITS=wine,winemaking,sommelier
-WINEWORLD_TOPIC="Wine industry, viticulture..."
-WINEWORLD_HN_KEYWORDS=wine,viticulture,vineyard
 ```
+
+Note: Project configuration (subreddits, topics, keywords) is now in `projects/{name}/config.yaml`, not in `.env`.
 
 ## Common Tasks
 
 **Add new red flag pattern:**
 1. Edit `core/enums.py` → `RED_FLAG_PATTERNS`
-2. Update `prompts/classify_posts.md` if needed
+2. Update project prompts if needed: `projects/{name}/prompts/classify.md`
 
 **Add new category:**
 1. Edit `core/enums.py` → `CategoryEnum`
-2. Update `prompts/classify_posts.md`
+2. Update project prompts: `projects/{name}/prompts/classify.md`
 3. Run DB migration if storing in ENUM column
 
 **Add new project:**
-1. Add `{PROJECT}_SUBREDDITS`, `{PROJECT}_TOPIC`, `{PROJECT}_HN_KEYWORDS` to `.env`
-2. Use `--project {project}` in CLI commands
+1. Create `projects/{name}/config.yaml`:
+   ```yaml
+   name: myproject
+   description: "My project description"
+   topic: "Topic for classification context"
+   sources:
+     reddit:
+       subreddits: [sub1, sub2]
+     hackernews:
+       keywords: [keyword1, keyword2]
+   ```
+2. Create `projects/{name}/prompts/classify.md` (copy from existing project)
+3. Create `projects/{name}/prompts/digest.md` (copy from existing project)
+4. Use `--project myproject` in CLI commands
 
 **Debug classification:**
 ```bash
 ./reddit-analyzer scan ClaudeAI --limit 5 --no-cache
 # Check outputs/classifications/ for raw JSON
+```
+
+**List available projects:**
+```bash
+./reddit-analyzer config
+# Shows auto-discovered projects from projects/ directory
 ```
 
 For full documentation, see `README.md`.

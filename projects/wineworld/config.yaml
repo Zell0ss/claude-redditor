@@ -1,0 +1,19 @@
+name: wineworld
+description: "Wine industry, viticulture, and sommelier expertise"
+
+topic: "Wine industry, viticulture, wine culture, wine tasting, and sommelier expertise"
+
+sources:
+  reddit:
+    subreddits:
+      - wine
+      - winemaking
+      - sommelier
+      - naturalwine
+  hackernews:
+    keywords:
+      - wine
+      - viticulture
+      - vineyard
+      - sommelier
+      - winery

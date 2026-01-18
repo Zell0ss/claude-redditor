@@ -122,7 +122,7 @@ def digest(
         rprint(f"\n[bold cyan]Generating digest for project '{project}'[/bold cyan]")
         rprint(f"[dim]Limit: {limit} posts | Min confidence: {min_confidence:.0%} | Format: {format}[/dim]\n")
 
-        generator = DigestGenerator(repo)
+        generator = DigestGenerator(repo, project=project)
 
         output_paths = []
 
