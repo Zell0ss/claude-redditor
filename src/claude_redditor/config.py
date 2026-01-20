@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     mysql_password: str = ""
     mysql_database: str = "reddit_analyzer"
 
+    # cloudflare api (for fetching reddit data from cloudflare workers)
+    cloudflare_api_token: str = ""
+
     # Behavior
     default_batch_size: int = 20  # Posts per Claude API request
     cache_ttl_hours: int = 24
