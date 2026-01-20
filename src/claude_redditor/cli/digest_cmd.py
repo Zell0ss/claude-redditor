@@ -40,9 +40,9 @@ def digest(
         help="Minimum classification confidence threshold (0.0-1.0)"
     ),
     format: str = typer.Option(
-        "markdown",
+        "both",
         "--format", "-f",
-        help="Output format: 'markdown' (default), 'json' (for web), or 'both'"
+        help="Output format: 'markdown', 'json' (for web), or 'both' (default)"
     ),
 ):
     """

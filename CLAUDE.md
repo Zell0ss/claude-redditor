@@ -3,11 +3,11 @@
 ## Quick Context
 
 ```
-STATUS: ✅ Production | 8 CLI commands + bookmark subcommands | Multi-project | Multi-source | Multi-tags
+STATUS: ✅ Production | 9 CLI commands + bookmark subcommands | Multi-project | Multi-source | Multi-tags | Web viewer
 
-FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON
+FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON → Web(Astro)
 
-CLI: scan, scan-hn, compare, digest, config, init-db, history, cache-stats
+CLI: scan, scan-hn, compare, digest, config, init-db, history, cache-stats, regenerate-json
      bookmark show|add|list|done|status
 
 FILES:
@@ -16,7 +16,7 @@ FILES:
 │  ├─ scan.py          → scan, scan-hn, compare
 │  ├─ digest_cmd.py    → digest command
 │  ├─ bookmark.py      → bookmark show|add|list|done|status
-│  ├─ db.py            → init-db, history, cache-stats
+│  ├─ db.py            → init-db, history, cache-stats, regenerate-json
 │  ├─ info.py          → config, version (auto-discovers projects)
 │  └─ helpers.py       → Output formatting (Rich)
 ├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
@@ -35,6 +35,10 @@ FILES:
 │  └─ wineworld/       → Wine industry (blog)
 │     ├─ config.yaml
 │     └─ prompts/
+web/                   → Astro static site for viewing digests
+├─ src/components/     → TagBadge.astro, StoryCard.astro
+├─ src/pages/          → index.astro, digest/[id].astro
+└─ src/types/          → TypeScript types for digest JSON
 
 DESIGN:
 - Multi-tags: topic_tags (array) + format_tag (single) per classification
@@ -44,8 +48,10 @@ DESIGN:
 - Categories: 10 (3 SIGNAL, 3 NOISE, 2 META, 1 OTHER, 1 UNRELATED)
 - Red flags: 6 patterns in core/enums.py
 - Signal ratio excludes UNRELATED posts
-- JSON digest: outputs/web/{date}.json + latest.json symlink
+- JSON digest: outputs/web/{project}_{date}.json + latest.json symlink
+- Digest default: --format both (generates markdown + JSON)
 - Bookmarks: denormalized (story data copied at bookmark time)
+- Web viewer: Astro static site reads JSONs from outputs/web/
 
 DEPS: Anthropic API (req), MariaDB (opt but recommended), Reddit API (opt, RSS fallback)
 ```
@@ -61,7 +67,14 @@ source .venv/bin/activate
 ./reddit-analyzer scan ClaudeAI --limit 20
 ./reddit-analyzer scan-hn -k claude --limit 20
 ./reddit-analyzer digest --project claudeia --dry-run
-./reddit-analyzer digest --project claudeia --format json  # JSON for web
+./reddit-analyzer digest --project claudeia  # Generates both markdown + JSON by default
+
+# Regenerate historical JSONs from DB
+./reddit-analyzer regenerate-json --project claudeia --date all
+
+# Web viewer (Astro)
+cd web && npm run dev    # http://localhost:4321
+cd web && npm run build  # Static build to web/dist/
 
 # Bookmarks
 ./reddit-analyzer bookmark show latest
@@ -88,6 +101,8 @@ source .venv/bin/activate
 | Add new project | `src/claude_redditor/projects/{name}/config.yaml` + `prompts/` |
 | Bookmark commands | `cli/bookmark.py` + `db/repository.py` |
 | JSON web output | `digest.py` (generate_json) → `outputs/web/` |
+| Regenerate JSONs | `cli/db.py` (regenerate-json command) |
+| Web viewer | `web/` (Astro + Tailwind) |
 | CLI output formatting | `cli/helpers.py` |
 
 ## Non-Obvious Design Decisions
@@ -105,6 +120,12 @@ source .venv/bin/activate
 6. **Project isolation**: All tables have `project` column, queries always filter by project
 
 7. **Projects as self-contained entities**: Each project in `src/claude_redditor/projects/` has its own config.yaml and prompts/. Zero code changes to add a new project.
+
+8. **JSON filename includes project**: `outputs/web/{project}_{date}.json` allows multiple projects to coexist
+
+9. **Digest generates both formats by default**: `--format both` is the default, creating markdown + JSON in one command
+
+10. **regenerate-json reconstructs from DB**: Historical JSONs can be backfilled from `sent_in_digest_at` timestamps in classifications table
 
 ## Environment Variables
 

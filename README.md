@@ -21,7 +21,9 @@
   - [`init-db` - Initialize Database](#init-db---initialize-database)
   - [`history` - View Scan History](#history---view-scan-history)
   - [`cache-stats` - Cache Statistics](#cache-stats---cache-statistics)
+  - [`regenerate-json` - Regenerate Historical JSONs](#regenerate-json---regenerate-historical-jsons)
   - [`version` - Version Info](#version---version-info)
+- [Web Viewer](#web-viewer)
 - [Architecture](#architecture)
   - [Dual-Mode Scraper](#dual-mode-scraper)
 - [MariaDB Cache Layer](#mariadb-cache-layer)
@@ -500,6 +502,7 @@ Generate a daily digest article from signal posts (in Spanish, designed for news
 - `--output-dir, -o`: Output directory for digest files
 - `--dry-run`: Preview digest without generating file
 - `--min-confidence`: Minimum confidence threshold (default: 0.7)
+- `--format, -f`: Output format: 'markdown', 'json', or 'both' (default: both)
 
 **Output Format ("La Gaceta IA"):**
 
@@ -550,10 +553,79 @@ The digest command is designed for automation with N8N. The typical workflow:
 
 For the complete step-by-step setup guide, see [docs/N8N_INTEGRATION.md](docs/N8N_INTEGRATION.md).
 
+### `regenerate-json` - Regenerate Historical JSONs
+
+Regenerate JSON digests from database for the web viewer. Useful for backfilling after enabling JSON output:
+
+```bash
+# Show available dates for a project
+./reddit-analyzer regenerate-json --project claudeia
+
+# Regenerate all historical JSONs
+./reddit-analyzer regenerate-json --project claudeia --date all
+
+# Regenerate specific date
+./reddit-analyzer regenerate-json -p claudeia -d 2026-01-18
+```
+
+**Options:**
+- `--project, -p`: Project to regenerate JSONs for (default: claudeia)
+- `--date, -d`: Specific date (YYYY-MM-DD) or 'all' for all dates
+
+The command reads from `sent_in_digest_at` timestamps in the classifications table and writes JSON files to `outputs/web/{project}_{date}.json`.
+
 ### `version` - Version Info
 
 ```bash
 ./reddit-analyzer version
+```
+
+## Web Viewer
+
+The project includes an Astro-based static web viewer for browsing digests with tags visualization.
+
+### Setup
+
+```bash
+cd web
+npm install
+npm run dev    # Development server at http://localhost:4321
+npm run build  # Build static site to web/dist/
+```
+
+### Features
+
+- **Index page**: Lists all digests sorted by date
+- **Digest detail**: Shows all stories with tags, categories, and confidence scores
+- **Tag badges**: Color-coded by type (topic, format, category)
+- **Red flags**: Visual warnings for problematic content
+- **Responsive design**: Tailwind CSS for clean styling
+
+### How It Works
+
+1. The digest command generates JSON files to `outputs/web/{project}_{date}.json`
+2. Astro reads these JSON files at build time
+3. Static HTML pages are generated for each digest
+4. Deploy `web/dist/` to any static hosting (Cloudflare Pages, Vercel, etc.)
+
+### Directory Structure
+
+```
+web/
+├── src/
+│   ├── components/
+│   │   ├── TagBadge.astro    # Tag with color based on type
+│   │   └── StoryCard.astro   # Story card with all metadata
+│   ├── layouts/
+│   │   └── Layout.astro      # Base layout with nav/footer
+│   ├── pages/
+│   │   ├── index.astro       # List of all digests
+│   │   └── digest/[id].astro # Individual digest detail
+│   ├── styles/
+│   │   └── global.css        # Tailwind + custom colors
+│   └── types/
+│       └── digest.ts         # TypeScript interfaces
+└── package.json
 ```
 
 ## Architecture
@@ -836,6 +908,10 @@ reddit-analyzer/
 │   ├── reporter.py            # Rich terminal output and JSON export
 │   ├── digest.py              # Daily digest generation (MD + JSON)
 │   └── content_fetcher.py     # Fetch full content from truncated posts
+├── web/                       # Astro static web viewer
+│   ├── src/components/        # TagBadge.astro, StoryCard.astro
+│   ├── src/pages/             # index.astro, digest/[id].astro
+│   └── src/types/             # TypeScript interfaces
 ├── projects/                  # Self-contained project definitions
 │   ├── claudeia/              # AI/LLM content (podcast)
 │   │   ├── config.yaml        # topic, subreddits, hn_keywords

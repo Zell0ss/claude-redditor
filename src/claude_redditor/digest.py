@@ -431,7 +431,7 @@ class DigestGenerator:
         output_dir = settings.output_dir / 'web'
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        output_path = output_dir / f"{date_str}.json"
+        output_path = output_dir / f"{project}_{date_str}.json"
         output_path.write_text(json.dumps(digest_data, indent=2, ensure_ascii=False), encoding='utf-8')
 
         # 5. Update latest.json symlink

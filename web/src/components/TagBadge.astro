@@ -1,0 +1,54 @@
+---
+interface Props {
+  tag: string;
+  type: 'topic' | 'format' | 'category';
+}
+
+const { tag, type } = Astro.props;
+
+// Color mappings based on tag type
+const getColorClasses = (tag: string, type: string): string => {
+  if (type === 'format') {
+    return 'bg-gray-100 text-gray-700 border-gray-300';
+  }
+
+  if (type === 'category') {
+    const categoryColors: Record<string, string> = {
+      technical: 'bg-blue-100 text-blue-800 border-blue-300',
+      industry: 'bg-purple-100 text-purple-800 border-purple-300',
+      tutorial: 'bg-green-100 text-green-800 border-green-300',
+      discussion: 'bg-amber-100 text-amber-800 border-amber-300',
+      news: 'bg-red-100 text-red-800 border-red-300',
+      community: 'bg-pink-100 text-pink-800 border-pink-300',
+      meta: 'bg-gray-100 text-gray-700 border-gray-300',
+      general: 'bg-slate-100 text-slate-700 border-slate-300',
+    };
+    return categoryColors[tag.toLowerCase()] || 'bg-slate-100 text-slate-700 border-slate-300';
+  }
+
+  // Topic tags - rotate through colors based on hash
+  const topicColors = [
+    'bg-blue-100 text-blue-800 border-blue-300',
+    'bg-green-100 text-green-800 border-green-300',
+    'bg-purple-100 text-purple-800 border-purple-300',
+    'bg-orange-100 text-orange-800 border-orange-300',
+    'bg-pink-100 text-pink-800 border-pink-300',
+    'bg-cyan-100 text-cyan-800 border-cyan-300',
+  ];
+
+  const hash = tag.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return topicColors[hash % topicColors.length];
+};
+
+const colorClasses = getColorClasses(tag, type);
+---
+
+<span
+  class:list={[
+    'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border',
+    colorClasses
+  ]}
+>
+  {type === 'format' && <span class="mr-1 opacity-60">#</span>}
+  {tag}
+</span>

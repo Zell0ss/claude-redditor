@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Custom color scheme for tags */
+@theme {
+  /* Topic tag colors */
+  --color-tag-blue: #3b82f6;
+  --color-tag-green: #22c55e;
+  --color-tag-purple: #a855f7;
+  --color-tag-orange: #f97316;
+  --color-tag-pink: #ec4899;
+  --color-tag-cyan: #06b6d4;
+
+  /* Format tag colors */
+  --color-format-gray: #6b7280;
+
+  /* Category colors */
+  --color-category-technical: #3b82f6;
+  --color-category-industry: #8b5cf6;
+  --color-category-tutorial: #22c55e;
+  --color-category-discussion: #f59e0b;
+  --color-category-news: #ef4444;
+  --color-category-meta: #6b7280;
+}
