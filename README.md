@@ -24,6 +24,8 @@
   - [`regenerate-json` - Regenerate Historical JSONs](#regenerate-json---regenerate-historical-jsons)
   - [`version` - Version Info](#version---version-info)
 - [Web Viewer](#web-viewer)
+  - [Local Development](#local-development)
+  - [Deploy to Cloudflare Pages](#deploy-to-cloudflare-pages)
 - [Architecture](#architecture)
   - [Dual-Mode Scraper](#dual-mode-scraper)
 - [MariaDB Cache Layer](#mariadb-cache-layer)
@@ -383,6 +385,9 @@ All existing data will be assigned to the "default" project automatically.
 
 # Analyze all configured subreddits
 ./reddit-analyzer scan all --limit 30
+
+# Analyze all subreddits + HackerNews in one command
+./reddit-analyzer scan all --include-hn --project claudeia --limit 50
 ```
 
 **Options:**
@@ -392,6 +397,8 @@ All existing data will be assigned to the "default" project automatically.
 - `--export-json`: Export report to JSON
 - `--no-details`: Show summary only
 - `--no-cache`: Bypass database cache (classify all posts)
+- `--project, -p`: Project name for multi-project support (default: claudeia)
+- `--include-hn`: Also scan HackerNews (only with 'all' subreddit)
 
 ### `scan-hn` - Analyze HackerNews
 
@@ -607,6 +614,85 @@ npm run build  # Build static site to web/dist/
 2. Astro reads these JSON files at build time
 3. Static HTML pages are generated for each digest
 4. Deploy `web/dist/` to any static hosting (Cloudflare Pages, Vercel, etc.)
+
+### Local Development
+
+```bash
+cd web
+npm install          # Install dependencies (first time only)
+npm run dev          # Start dev server at http://localhost:4321
+```
+
+The dev server watches for changes in both the Astro source files and the JSON data in `outputs/web/`. When you run a new digest, refresh the page to see updated content.
+
+### Deploy to Cloudflare Pages
+
+#### One-Time Setup
+
+1. **Install Wrangler CLI** (Cloudflare's CLI tool):
+   ```bash
+   npm install -g wrangler
+   ```
+
+2. **Login to Cloudflare**:
+   ```bash
+   wrangler login
+   # Opens browser for authentication
+   ```
+
+3. **Create the Cloudflare Pages project**:
+   ```bash
+   wrangler pages project create clauderedditor-web
+   # Follow prompts, select "None" for framework preset
+   ```
+
+#### Manual Deploy
+
+After generating new digests, deploy manually:
+
+```bash
+cd web
+npm run build                                              # Build static site
+npx wrangler pages deploy dist/ --project-name=clauderedditor-web
+```
+
+The site will be available at `https://clauderedditor-web.pages.dev` (or your custom domain if configured).
+
+#### Automated Daily Deploy
+
+For automated daily updates, create a script that:
+1. Scans Reddit and HackerNews for new content
+2. Generates the digest (markdown + JSON)
+3. Rebuilds and deploys the web viewer
+
+Example script (`scripts/daily-digest.sh`):
+
+```bash
+#!/bin/bash
+set -e
+
+cd /data/ClaudeRedditor
+source .venv/bin/activate
+
+# Scan sources
+./reddit-analyzer scan ClaudeAI --limit 50 --project claudeia
+./reddit-analyzer scan-hn -k claude -k anthropic --limit 30 --project claudeia
+
+# Generate digest (creates both markdown + JSON)
+./reddit-analyzer digest --project claudeia --limit 15
+
+# Build and deploy web
+cd web
+npm run build
+npx wrangler pages deploy dist/ --project-name=clauderedditor-web
+```
+
+Add to crontab for daily execution:
+```bash
+crontab -e
+# Add this line for 7 AM daily:
+0 7 * * * /data/ClaudeRedditor/scripts/daily-digest.sh >> /data/ClaudeRedditor/logs/daily.log 2>&1
+```
 
 ### Directory Structure
 

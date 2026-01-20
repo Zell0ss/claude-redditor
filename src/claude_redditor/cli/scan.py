@@ -61,6 +61,11 @@ def scan(
         "--project", "-p",
         help="Project name for multi-project support"
     ),
+    include_hn: bool = typer.Option(
+        False,
+        "--include-hn",
+        help="Also scan HackerNews (only with 'all' subreddit)"
+    ),
 ):
     """
     Scan and analyze posts from a subreddit.
@@ -72,6 +77,8 @@ def scan(
         reddit-analyzer scan ClaudeAI --limit 100 --sort top --time-filter month
 
         reddit-analyzer scan all --limit 20 --export-json
+
+        reddit-analyzer scan all --include-hn --project claudeia
     """
     # Determine which subreddits to analyze
     if subreddit.lower() == "all":
@@ -188,9 +195,76 @@ def scan(
             else:
                 handle_scan_error(e, f"scan r/{sub}")
 
+    # Scan HackerNews if --include-hn flag is set (only with 'all')
+    if include_hn and subreddit.lower() == "all":
+        try:
+            proj = project_loader.load(project)
+            hn_keywords = proj.hn_keywords
+            if hn_keywords:
+                rprint(f"[bold cyan]Analyzing HackerNews[/bold cyan]")
+                rprint(f"[dim]Keywords: {', '.join(hn_keywords)} | Limit: {limit}[/dim]\n")
+
+                hn_scraper = create_hn_scraper(keywords=hn_keywords)
+                hn_posts = hn_scraper.fetch_posts(limit=limit, sort="top")
+
+                if hn_posts:
+                    rprint(f"[green]✓[/green] Fetched {len(hn_posts)} posts")
+
+                    classifier = create_classifier()
+                    cached_engine = create_cached_engine(settings)
+
+                    posts_dicts = [p.to_dict() for p in hn_posts]
+
+                    if no_cache or not settings.is_mysql_configured():
+                        rprint(f"[dim]Classifying {len(hn_posts)} posts with Claude...[/dim]")
+                        hn_classifications = classifier.classify_posts(hn_posts, project=project)
+                        hn_cache_stats = {'total': len(hn_posts), 'cached': 0, 'new': len(hn_classifications)}
+                    else:
+                        rprint(f"[dim]Checking cache and classifying new posts...[/dim]")
+                        hn_classifications, hn_cache_stats = cached_engine.analyze_with_cache(
+                            posts_dicts, classifier, source='hackernews', project=project
+                        )
+                        console.print(render_cache_stats_table(hn_cache_stats))
+                        rprint()
+
+                    # Filter and show
+                    classified_ids = {c.post_id for c in hn_classifications}
+                    filtered_hn = [p for p in hn_posts if p.id in classified_ids]
+
+                    if len(filtered_hn) != len(hn_posts):
+                        rprint(f"[yellow]⚠ {len(hn_posts) - len(filtered_hn)} posts failed classification[/yellow]")
+
+                    posts_dict = {p.id: p.title for p in hn_posts}
+                    render_classifications_with_tags(hn_classifications, posts_dict)
+
+                    # Analyze
+                    analyzer = create_analyzer()
+                    hn_report = analyzer.analyze(
+                        posts=filtered_hn,
+                        classifications=hn_classifications,
+                        subreddit="HackerNews",
+                        period=f"{limit} top posts (keywords: {', '.join(hn_keywords)})",
+                    )
+
+                    # Save scan history
+                    if not no_cache and settings.is_mysql_configured():
+                        cached_engine.save_scan_result("HackerNews", hn_cache_stats, hn_report.signal_ratio, source='hackernews', project=project)
+
+                    reports.append(hn_report)
+
+                    reporter = create_reporter()
+                    rprint()
+                    reporter.render_terminal(hn_report, show_details=not no_details)
+                else:
+                    rprint(f"[yellow]⚠ No HackerNews posts found matching keywords[/yellow]\n")
+            else:
+                rprint(f"[yellow]⚠ No HackerNews keywords configured for project '{project}'[/yellow]\n")
+        except Exception as e:
+            rprint(f"[red]✗ Error scanning HackerNews: {e}[/red]\n")
+
     # Show comparison if multiple subreddits
     if len(reports) > 1:
-        rprint("\n[bold cyan]Subreddit Comparison[/bold cyan]\n")
+        rprint("\n[bold cyan]Source Comparison[/bold cyan]\n")
         reporter = create_reporter()
         reporter.render_comparison(reports)
 

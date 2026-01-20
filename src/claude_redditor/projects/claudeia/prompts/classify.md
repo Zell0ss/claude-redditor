@@ -107,6 +107,17 @@ JSON format:
 5. **Technical posts**: Must have actionable content (code, prompts, clear steps)
 6. **Use specific categories**: Never use generic terms like "signal" or "noise" - always use the specific category names listed above
 
+## OUTPUT FORMAT - CRITICAL
+
+Return ONLY the JSON array. Do NOT include any text before or after the JSON.
+Do NOT include explanations, notes, or commentary.
+The response must start with `[` and end with `]`.
+
+**VALID CATEGORY VALUES (copy exactly):**
+technical, troubleshooting, research_verified, mystical, unverified_claim, engagement_bait, community, meme, outlier, unrelated
+
+**INVALID** - do NOT use these as categories: discussion, news, signal, noise, meta
+
 ## Posts to Classify
 
 {posts_json}

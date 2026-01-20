@@ -10,6 +10,19 @@ from .projects import project_loader
 from .core.models import RedditPost, Classification
 from .core.enums import CategoryEnum
 
+# Category correction for common LLM mistakes (maps invalid → valid)
+CATEGORY_CORRECTIONS = {
+    "discussion": "community",
+    "news": "technical",
+    "signal": "technical",
+    "noise": "unverified_claim",
+    "meta": "community",
+    "question": "community",
+    "showcase": "technical",
+    "tutorial": "technical",
+    "resource": "technical",
+}
+
 
 class PostClassifier:
     """Classifies Reddit posts using Claude API."""
@@ -47,8 +60,24 @@ class PostClassifier:
         # Process in batches
         for i in range(0, len(posts), batch_size):
             batch = posts[i : i + batch_size]
-            classifications = self._classify_batch(batch, project=project)
-            all_classifications.extend(classifications)
+            try:
+                classifications = self._classify_batch(batch, project=project)
+                all_classifications.extend(classifications)
+            except ValueError as e:
+                if "refusal" in str(e).lower():
+                    # API refused the batch - retry with smaller batches
+                    print(f"⚠ Batch refused by API, retrying with individual posts...")
+                    for post in batch:
+                        try:
+                            single_result = self._classify_batch([post], project=project)
+                            all_classifications.extend(single_result)
+                        except ValueError as e2:
+                            if "refusal" in str(e2).lower():
+                                print(f"⚠ Skipping post {post.id} (content refused by API)")
+                            else:
+                                raise
+                else:
+                    raise
 
         return all_classifications
 
@@ -102,6 +131,8 @@ class PostClassifier:
             )
 
             # Extract text response
+            if not response.content:
+                raise ValueError(f"Empty response from Claude API. Stop reason: {response.stop_reason}")
             response_text = response.content[0].text
 
             # Parse JSON response
@@ -111,9 +142,16 @@ class PostClassifier:
             classifications = []
             for data in classifications_data:
                 try:
+                    # Auto-correct common LLM category mistakes
+                    category = data["category"]
+                    if category in CATEGORY_CORRECTIONS:
+                        corrected = CATEGORY_CORRECTIONS[category]
+                        print(f"⚠ Auto-corrected category '{category}' → '{corrected}' for {data['post_id']}")
+                        category = corrected
+
                     classification = Classification(
                         post_id=data["post_id"],
-                        category=CategoryEnum(data["category"]),
+                        category=CategoryEnum(category),
                         confidence=float(data["confidence"]),
                         red_flags=data.get("red_flags", []),
                         reasoning=data.get("reasoning", ""),
@@ -133,20 +171,40 @@ class PostClassifier:
 
     def _extract_json(self, text: str) -> list:
         """Extract JSON array from Claude's response."""
-        # Try to find JSON in the response
-        start_idx = text.find("[")
-        end_idx = text.rfind("]") + 1
+        # Try to find JSON in the response - handle markdown code blocks
+        # Look for ```json ... ``` first
+        import re
+        json_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', text)
+        if json_block_match:
+            json_str = json_block_match.group(1)
+        else:
+            # Fallback: find first [ to matching ]
+            start_idx = text.find("[")
+            if start_idx == -1:
+                raise ValueError("No JSON array found in response")
 
-        if start_idx == -1 or end_idx == 0:
-            raise ValueError("No JSON array found in response")
+            # Find the matching closing bracket (handling nested arrays)
+            bracket_count = 0
+            end_idx = start_idx
+            for i, char in enumerate(text[start_idx:], start_idx):
+                if char == '[':
+                    bracket_count += 1
+                elif char == ']':
+                    bracket_count -= 1
+                    if bracket_count == 0:
+                        end_idx = i + 1
+                        break
 
-        json_str = text[start_idx:end_idx]
+            if end_idx <= start_idx:
+                raise ValueError("No matching ] found in response")
+
+            json_str = text[start_idx:end_idx]
 
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
             print(f"⚠ JSON parsing error: {e}")
-            print(f"Response text: {text}")
+            print(f"Extracted JSON: {json_str[:500]}...")
             raise
 
 

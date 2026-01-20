@@ -65,7 +65,9 @@ source .venv/bin/activate
 # Run CLI
 ./reddit-analyzer --help
 ./reddit-analyzer scan ClaudeAI --limit 20
-./reddit-analyzer scan-hn -k claude --limit 20
+./reddit-analyzer scan all --project claudeia --limit 50           # All subreddits
+./reddit-analyzer scan all --include-hn --project claudeia         # All sources (Reddit + HN)
+./reddit-analyzer scan-hn --project claudeia --limit 20            # HN with project keywords
 ./reddit-analyzer digest --project claudeia --dry-run
 ./reddit-analyzer digest --project claudeia  # Generates both markdown + JSON by default
 
@@ -126,6 +128,10 @@ cd web && npm run build  # Static build to web/dist/
 9. **Digest generates both formats by default**: `--format both` is the default, creating markdown + JSON in one command
 
 10. **regenerate-json reconstructs from DB**: Historical JSONs can be backfilled from `sent_in_digest_at` timestamps in classifications table
+
+11. **Classifier handles API refusals**: If a batch is refused, retries with individual posts and skips problematic content
+
+12. **Category auto-correction**: Invalid LLM categories (discussion, news, etc.) are auto-mapped to valid ones (see `CATEGORY_CORRECTIONS` in classifier.py)
 
 ## Environment Variables
 
