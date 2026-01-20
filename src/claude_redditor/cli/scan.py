@@ -84,7 +84,7 @@ def scan(
 
         if not subreddits:
             rprint("[red]✗ No subreddits configured[/red]")
-            rprint(f"[yellow]Add subreddits to projects/{project}/config.yaml[/yellow]")
+            rprint(f"[yellow]Add subreddits to src/claude_redditor/projects/{project}/config.yaml[/yellow]")
             raise typer.Exit(1)
         rprint(f"\n[cyan]Analyzing all configured subreddits for project '{project}':[/cyan] {', '.join(f'r/{s}' for s in subreddits)}\n")
     else:

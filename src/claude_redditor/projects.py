@@ -3,8 +3,7 @@
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Dict, Any
-from functools import lru_cache
+from typing import List, Dict
 
 
 @dataclass
@@ -168,24 +167,24 @@ def _find_projects_dir() -> Path:
     Find the projects directory.
 
     Searches in order:
-    1. Current working directory / projects
-    2. Package directory / ../../projects (relative to this file)
+    1. Package directory / projects (relative to this file)
+    2. Current working directory / projects (fallback)
 
     Returns:
         Path to projects directory
     """
-    # Try current working directory first
+    # Try relative to package first (src/claude_redditor/projects/)
+    package_projects = Path(__file__).parent / 'projects'
+    if package_projects.exists():
+        return package_projects
+
+    # Fallback to current working directory
     cwd_projects = Path.cwd() / 'projects'
     if cwd_projects.exists():
         return cwd_projects
 
-    # Try relative to package
-    package_projects = Path(__file__).parent.parent.parent / 'projects'
-    if package_projects.exists():
-        return package_projects
-
-    # Default to cwd (will be created if needed)
-    return cwd_projects
+    # Default to package location
+    return package_projects
 
 
 # Global project loader instance

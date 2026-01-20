@@ -28,19 +28,19 @@ FILES:
 ├─ db/repository.py    → All DB queries + bookmark CRUD
 ├─ db/models.py        → ORM models (RedditPost, Classification, ScanHistory, Bookmark)
 ├─ scrapers/           → reddit.py (RSS/PRAW), hackernews.py (Firebase)
-projects/              → Self-contained project definitions
-├─ claudeia/           → AI/LLM content (podcast)
-│  ├─ config.yaml      → topic, subreddits, hn_keywords
-│  └─ prompts/         → classify.md, digest.md
-└─ wineworld/          → Wine industry (blog)
-   ├─ config.yaml
-   └─ prompts/
+├─ projects/           → Self-contained project definitions
+│  ├─ claudeia/        → AI/LLM content (podcast)
+│  │  ├─ config.yaml   → topic, subreddits, hn_keywords
+│  │  └─ prompts/      → classify.md, digest.md
+│  └─ wineworld/       → Wine industry (blog)
+│     ├─ config.yaml
+│     └─ prompts/
 
 DESIGN:
 - Multi-tags: topic_tags (array) + format_tag (single) per classification
 - Truncation: SIGNAL/META=5000ch, NOISE/UNRELATED=500ch (in analyzer.py:363-371)
 - Truncation detection: len(selftext)==5000 → fetch full content for digest
-- Multi-project: --project flag, projects auto-discovered from projects/ directory
+- Multi-project: --project flag, projects auto-discovered from src/claude_redditor/projects/
 - Categories: 10 (3 SIGNAL, 3 NOISE, 2 META, 1 OTHER, 1 UNRELATED)
 - Red flags: 6 patterns in core/enums.py
 - Signal ratio excludes UNRELATED posts
@@ -79,13 +79,13 @@ source .venv/bin/activate
 | Task | File(s) |
 |------|---------|
 | Add CLI command | `cli/` (new file or add to existing) |
-| Modify classification | `projects/{name}/prompts/classify.md` |
+| Modify classification | `src/claude_redditor/projects/{name}/prompts/classify.md` |
 | Change categories/red flags | `core/enums.py` + project prompts |
 | DB queries/cache | `db/repository.py` |
 | Add scraper source | `scrapers/` (inherit from `base.py`) |
-| Digest format | `projects/{name}/prompts/digest.md` |
+| Digest format | `src/claude_redditor/projects/{name}/prompts/digest.md` |
 | Settings/env vars | `config.py` + `.env` (secrets only) |
-| Add new project | `projects/{name}/config.yaml` + `prompts/` |
+| Add new project | `src/claude_redditor/projects/{name}/config.yaml` + `prompts/` |
 | Bookmark commands | `cli/bookmark.py` + `db/repository.py` |
 | JSON web output | `digest.py` (generate_json) → `outputs/web/` |
 | CLI output formatting | `cli/helpers.py` |
@@ -104,7 +104,7 @@ source .venv/bin/activate
 
 6. **Project isolation**: All tables have `project` column, queries always filter by project
 
-7. **Projects as self-contained entities**: Each project in `projects/` has its own config.yaml and prompts/. Zero code changes to add a new project.
+7. **Projects as self-contained entities**: Each project in `src/claude_redditor/projects/` has its own config.yaml and prompts/. Zero code changes to add a new project.
 
 ## Environment Variables
 
@@ -123,21 +123,21 @@ REDDIT_CLIENT_ID=...
 REDDIT_CLIENT_SECRET=...
 ```
 
-Note: Project configuration (subreddits, topics, keywords) is now in `projects/{name}/config.yaml`, not in `.env`.
+Note: Project configuration (subreddits, topics, keywords) is now in `src/claude_redditor/projects/{name}/config.yaml`, not in `.env`.
 
 ## Common Tasks
 
 **Add new red flag pattern:**
 1. Edit `core/enums.py` → `RED_FLAG_PATTERNS`
-2. Update project prompts if needed: `projects/{name}/prompts/classify.md`
+2. Update project prompts if needed: `src/claude_redditor/projects/{name}/prompts/classify.md`
 
 **Add new category:**
 1. Edit `core/enums.py` → `CategoryEnum`
-2. Update project prompts: `projects/{name}/prompts/classify.md`
+2. Update project prompts: `src/claude_redditor/projects/{name}/prompts/classify.md`
 3. Run DB migration if storing in ENUM column
 
 **Add new project:**
-1. Create `projects/{name}/config.yaml`:
+1. Create `src/claude_redditor/projects/{name}/config.yaml`:
    ```yaml
    name: myproject
    description: "My project description"
@@ -148,8 +148,8 @@ Note: Project configuration (subreddits, topics, keywords) is now in `projects/{
      hackernews:
        keywords: [keyword1, keyword2]
    ```
-2. Create `projects/{name}/prompts/classify.md` (copy from existing project)
-3. Create `projects/{name}/prompts/digest.md` (copy from existing project)
+2. Create `src/claude_redditor/projects/{name}/prompts/classify.md` (copy from existing project)
+3. Create `src/claude_redditor/projects/{name}/prompts/digest.md` (copy from existing project)
 4. Use `--project myproject` in CLI commands
 
 **Debug classification:**
@@ -161,7 +161,7 @@ Note: Project configuration (subreddits, topics, keywords) is now in `projects/{
 **List available projects:**
 ```bash
 ./reddit-analyzer config
-# Shows auto-discovered projects from projects/ directory
+# Shows auto-discovered projects from src/claude_redditor/projects/ directory
 ```
 
 For full documentation, see `README.md`.
