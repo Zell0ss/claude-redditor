@@ -126,7 +126,17 @@ def digest(
 
         output_paths = []
 
-        if format in ['markdown', 'both']:
+        if format == 'both':
+            # Use generate_both() to ensure same posts in same order for both formats
+            md_path, json_path = generator.generate_both(
+                project=project,
+                limit=limit,
+                output_dir=output_dir,
+                show_progress=True
+            )
+            output_paths.append(('markdown', md_path))
+            output_paths.append(('json', json_path))
+        elif format == 'markdown':
             md_path = generator.generate(
                 project=project,
                 limit=limit,
@@ -134,12 +144,11 @@ def digest(
                 show_progress=True
             )
             output_paths.append(('markdown', md_path))
-
-        if format in ['json', 'both']:
+        elif format == 'json':
             json_path = generator.generate_json(
                 project=project,
                 limit=limit,
-                show_progress=(format == 'json')  # Only show progress if not already shown for markdown
+                show_progress=True
             )
             output_paths.append(('json', json_path))
 

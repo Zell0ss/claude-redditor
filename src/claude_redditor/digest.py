@@ -125,6 +125,133 @@ class DigestGenerator:
         logger.info(f"Digest generated: {output_path} ({len(articles)} articles)")
         return output_path
 
+    def generate_both(
+        self,
+        project: str,
+        limit: int = 15,
+        output_dir: Optional[Path] = None,
+        show_progress: bool = True
+    ) -> tuple[Path, Path]:
+        """
+        Generate both markdown and JSON digests from the same posts.
+
+        This ensures both formats have the same posts in the same order,
+        and marks posts as sent only after both are generated.
+
+        Args:
+            project: Project name (e.g., 'claudeia')
+            limit: Maximum number of posts to include
+            output_dir: Output directory for markdown (defaults to outputs/digests)
+            show_progress: Show progress bar
+
+        Returns:
+            Tuple of (markdown_path, json_path)
+        """
+        # 1. Get signal posts not yet sent (shared between both formats)
+        posts_data = self.repo.get_signal_posts_for_digest(
+            project=project,
+            limit=limit
+        )
+
+        if not posts_data:
+            raise ValueError(f"No signal posts available for digest in project '{project}'")
+
+        logger.info(f"Found {len(posts_data)} signal posts for digest (both formats)")
+
+        # 2. Process posts for markdown (generate articles via Claude)
+        articles = []
+        processed_ids = []
+
+        if show_progress:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Generating articles...", total=len(posts_data))
+
+                for item in posts_data:
+                    post = item['post']
+                    progress.update(task, description=f"Processing: {post.get('title', '')[:40]}...")
+
+                    article = self._process_post(item)
+
+                    if article:
+                        articles.append({
+                            'post': post,
+                            'article': article,
+                            'item': item  # Keep original item for JSON
+                        })
+                        processed_ids.append(post['id'])
+
+                    progress.advance(task)
+        else:
+            for item in posts_data:
+                article = self._process_post(item)
+                if article:
+                    articles.append({
+                        'post': item['post'],
+                        'article': article,
+                        'item': item
+                    })
+                    processed_ids.append(item['post']['id'])
+
+        if not articles:
+            raise ValueError("Failed to generate any articles. Check API connectivity.")
+
+        # 3. Generate markdown
+        md_path = self._write_markdown(
+            articles=articles,
+            project=project,
+            output_dir=output_dir
+        )
+
+        # 4. Extract sequence number from markdown filename to use for JSON
+        # Markdown: digest_{project}_{date}_{NN}.md -> extract NN
+        try:
+            seq_num = int(md_path.stem.split('_')[-1])
+        except (ValueError, IndexError):
+            seq_num = 1
+
+        # 5. Generate JSON from the same posts (same order, same sequence number)
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        stories = []
+        for idx, art in enumerate(articles, 1):
+            story = self._build_story(art['item'], date_str, idx)
+            stories.append(story)
+
+        # Write JSON with SAME sequence number as markdown
+        json_output_dir = settings.output_dir / 'web'
+        json_output_dir.mkdir(parents=True, exist_ok=True)
+
+        digest_id = f"{date_str}_{seq_num:02d}"
+
+        for idx, story in enumerate(stories, 1):
+            story["id"] = f"{date_str}_{seq_num:02d}_{idx:03d}"
+
+        digest_data = {
+            "digest_id": digest_id,
+            "generated_at": datetime.now().isoformat() + "Z",
+            "project": project,
+            "story_count": len(stories),
+            "stories": stories
+        }
+
+        json_path = json_output_dir / f"{project}_{date_str}_{seq_num:02d}.json"
+        json_path.write_text(json.dumps(digest_data, indent=2, ensure_ascii=False), encoding='utf-8')
+
+        # Update latest.json symlink
+        latest_path = json_output_dir / "latest.json"
+        if latest_path.exists() or latest_path.is_symlink():
+            latest_path.unlink()
+        latest_path.symlink_to(json_path.name)
+
+        # 5. Mark posts as sent (only after both are generated)
+        self.repo.mark_posts_as_sent_in_digest(processed_ids, project)
+
+        logger.info(f"Both digests generated: {md_path}, {json_path} ({len(articles)} articles)")
+        return md_path, json_path
+
     def _process_post(self, item: Dict) -> Optional[Dict]:
         """
         Process a single post: fetch content if needed and generate article.
@@ -418,20 +545,42 @@ class DigestGenerator:
                 story = self._build_story(item, date_str, idx)
                 stories.append(story)
 
-        # 3. Build digest JSON
+        # 3. Write to outputs/web/ with sequential numbering
+        output_dir = settings.output_dir / 'web'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Find next available sequence number for today (same logic as markdown)
+        existing = list(output_dir.glob(f"{project}_{date_str}_*.json"))
+        if existing:
+            numbers = []
+            for f in existing:
+                try:
+                    # Extract NN from {project}_{date}_{NN}.json
+                    num = int(f.stem.split('_')[-1])
+                    numbers.append(num)
+                except ValueError:
+                    pass
+            next_num = max(numbers) + 1 if numbers else 1
+        else:
+            next_num = 1
+
+        # Build digest ID with sequence number
+        digest_id = f"{date_str}_{next_num:02d}"
+
+        # Update story IDs to match digest sequence
+        for idx, story in enumerate(stories, 1):
+            story["id"] = f"{date_str}_{next_num:02d}_{idx:03d}"
+
+        # 4. Build digest JSON
         digest_data = {
-            "digest_id": date_str,
+            "digest_id": digest_id,
             "generated_at": datetime.now().isoformat() + "Z",
             "project": project,
             "story_count": len(stories),
             "stories": stories
         }
 
-        # 4. Write to outputs/web/
-        output_dir = settings.output_dir / 'web'
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        output_path = output_dir / f"{project}_{date_str}.json"
+        output_path = output_dir / f"{project}_{date_str}_{next_num:02d}.json"
         output_path.write_text(json.dumps(digest_data, indent=2, ensure_ascii=False), encoding='utf-8')
 
         # 5. Update latest.json symlink
@@ -467,11 +616,9 @@ class DigestGenerator:
         else:
             source = "Unknown"
 
-        # Build story ID
-        story_id = f"{date_str}-{idx:03d}"
-
+        # Story ID will be set later with digest sequence number
         return {
-            "id": story_id,
+            "id": "",  # Placeholder, updated in generate_json with digest sequence
             "title": post.get('title', ''),
             "source": source,
             "author": post.get('author', 'unknown'),

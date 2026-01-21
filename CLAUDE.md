@@ -123,7 +123,7 @@ cd web && npm run build  # Static build to web/dist/
 
 7. **Projects as self-contained entities**: Each project in `src/claude_redditor/projects/` has its own config.yaml and prompts/. Zero code changes to add a new project.
 
-8. **JSON filename includes project**: `outputs/web/{project}_{date}.json` allows multiple projects to coexist
+8. **JSON filename matches digest numbering**: `outputs/web/{project}_{date}-{NN}.json` with story IDs like `{date}-{NN}-{idx}` for cross-referencing with markdown digests
 
 9. **Digest generates both formats by default**: `--format both` is the default, creating markdown + JSON in one command
 

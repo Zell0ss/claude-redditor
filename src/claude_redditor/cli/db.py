@@ -284,6 +284,10 @@ def regenerate_json(
                 if not rows:
                     continue
 
+                # Use sequence number 01 for regenerated historical data
+                seq_num = 1
+                digest_id = f"{digest_date}_{seq_num:02d}"
+
                 # Build stories array
                 stories = []
                 for idx, row in enumerate(rows, 1):
@@ -307,7 +311,7 @@ def regenerate_json(
                     red_flags = red_flags or []
 
                     story = {
-                        "id": f"{digest_date}-{idx:03d}",
+                        "id": f"{digest_id}_{idx:03d}",
                         "title": row.title or "",
                         "source": source,
                         "author": row.author or "unknown",
@@ -325,15 +329,15 @@ def regenerate_json(
 
                 # Build digest JSON
                 digest_data = {
-                    "digest_id": str(digest_date),
+                    "digest_id": digest_id,
                     "generated_at": datetime.combine(digest_date, datetime.min.time()).isoformat() + "Z",
                     "project": project,
                     "story_count": len(stories),
                     "stories": stories
                 }
 
-                # Write file
-                output_path = output_dir / f"{project}_{digest_date}.json"
+                # Write file with sequence number
+                output_path = output_dir / f"{project}_{digest_date}_{seq_num:02d}.json"
                 output_path.write_text(
                     json.dumps(digest_data, indent=2, ensure_ascii=False),
                     encoding='utf-8'
@@ -347,7 +351,7 @@ def regenerate_json(
                 latest_path = output_dir / "latest.json"
                 if latest_path.exists() or latest_path.is_symlink():
                     latest_path.unlink()
-                latest_path.symlink_to(f"{project}_{latest_date}.json")
+                latest_path.symlink_to(f"{project}_{latest_date}_01.json")
 
             rprint(f"\n[bold green]✓ Done! Regenerated {len(dates_to_process)} JSON file(s)[/bold green]\n")
 
