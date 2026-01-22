@@ -758,7 +758,140 @@ The cache layer uses MariaDB/MySQL to persistently store classifications, avoidi
 
 ### Database Schema
 
-The system uses three tables to manage caching and tracking:
+The system uses four tables to manage caching, tracking, and bookmarks:
+
+```mermaid
+erDiagram
+    posts {
+        varchar(50) id PK "reddit_abc123, hn_8863"
+        enum source "reddit, hackernews"
+        varchar(50) project "claudeia, wineworld"
+        varchar(100) subreddit "ClaudeAI, null for HN"
+        text title
+        varchar(100) author
+        int score
+        int num_comments
+        bigint created_utc
+        text url
+        text selftext "truncated 500-5000 chars"
+        timestamp fetched_at
+    }
+
+    classifications {
+        int id PK
+        varchar(50) post_id FK
+        enum source "reddit, hackernews"
+        varchar(50) project
+        enum category "technical, mystical, etc"
+        decimal confidence "0.00-1.00"
+        json red_flags
+        text reasoning
+        varchar(50) model_version
+        timestamp classified_at
+        timestamp sent_in_digest_at "null until sent"
+        json topic_tags "prompts, tools, models..."
+        varchar(50) format_tag "tutorial, showcase..."
+        date digest_date
+    }
+
+    scan_history {
+        int id PK
+        varchar(100) subreddit "or HackerNews"
+        enum source "reddit, hackernews"
+        varchar(50) project
+        timestamp scan_date
+        int posts_fetched
+        int posts_classified
+        int posts_cached
+        decimal signal_ratio "0-100%"
+    }
+
+    bookmarks {
+        int id PK
+        varchar(50) story_id UK "2026-01-21_02_003"
+        date digest_date
+        timestamp bookmarked_at
+        text notes
+        enum status "to_read, to_implement, done"
+        text story_title
+        text story_url
+        varchar(50) story_source "r/ClaudeAI, HackerNews"
+        varchar(50) story_category
+        json story_topic_tags
+        varchar(50) story_format_tag
+        varchar(50) post_id "reddit_abc123, hn_8863"
+    }
+
+    posts ||--o| classifications : "has"
+    posts ||--o{ bookmarks : "referenced by"
+```
+
+**Key relationships:**
+- `classifications.post_id` → `posts.id` (foreign key with CASCADE delete)
+- `bookmarks.post_id` → `posts.id` (soft reference, nullable for backwards compatibility)
+- `bookmarks` is denormalized: story data is copied at bookmark time to avoid JOINs
+
+**ID formats:**
+- `posts.id`: Prefixed format (`reddit_abc123`, `hn_12345678`)
+- `bookmarks.story_id`: Digest position format (`{date}_{seq}_{idx}`, e.g., `2026-01-21_02_003`)
+
+### Example Queries
+
+**Get signal posts for digest:**
+```sql
+SELECT p.id, p.title, p.score, p.url,
+       c.category, c.confidence, c.topic_tags
+FROM posts p
+JOIN classifications c ON p.id = c.post_id
+WHERE c.project = 'claudeia'
+  AND c.category IN ('technical', 'troubleshooting', 'research_verified')
+  AND c.sent_in_digest_at IS NULL
+  AND c.confidence >= 0.7
+ORDER BY p.score DESC, c.confidence DESC
+LIMIT 15;
+```
+
+**Mark posts as sent in digest:**
+```sql
+UPDATE classifications
+SET sent_in_digest_at = NOW(),
+    digest_date = CURDATE()
+WHERE post_id IN ('reddit_abc123', 'reddit_def456')
+  AND project = 'claudeia';
+```
+
+**Regenerate JSON from historical digest:**
+```sql
+SELECT p.id, p.title, p.author, p.url, p.score, p.num_comments, p.subreddit,
+       c.category, c.confidence, c.topic_tags, c.format_tag,
+       c.red_flags, c.reasoning, c.sent_in_digest_at
+FROM posts p
+JOIN classifications c ON p.id = c.post_id
+WHERE DATE(c.sent_in_digest_at) = '2026-01-21'
+  AND c.project = 'claudeia'
+ORDER BY c.sent_in_digest_at ASC;
+```
+
+**Get bookmark with original post data:**
+```sql
+SELECT b.story_id, b.story_title, b.status, b.notes,
+       p.selftext, p.score, p.num_comments
+FROM bookmarks b
+LEFT JOIN posts p ON b.post_id = p.id
+WHERE b.status = 'to_read'
+ORDER BY b.bookmarked_at DESC;
+```
+
+**Daily stats by source:**
+```sql
+SELECT source, DATE(fetched_at) as date, COUNT(*) as posts
+FROM posts
+WHERE project = 'claudeia'
+GROUP BY source, DATE(fetched_at)
+ORDER BY date DESC;
+```
+
+### Table Details
 
 #### `posts` - Post Metadata (Multi-Source)
 Stores post information from Reddit and HackerNews to avoid re-fetching.
@@ -813,6 +946,29 @@ Records each scan with metrics for historical analysis (multi-source).
 | `signal_ratio` | DECIMAL(5,2) | Signal percentage (0-100) |
 
 **Indexes:** `subreddit`, `source`, `scan_date`
+
+#### `bookmarks` - User Bookmarks
+Stores user bookmarks for interesting stories from digests. Denormalized to avoid JOINs.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT | Auto-increment primary key |
+| `story_id` | VARCHAR(50) | Digest story ID like "2026-01-21_02_003" (unique) |
+| `digest_date` | DATE | Date of the source digest |
+| `bookmarked_at` | TIMESTAMP | When bookmark was created |
+| `notes` | TEXT | User notes (optional) |
+| `status` | ENUM | 'to_read', 'to_implement', 'done' |
+| `story_title` | TEXT | Copy of story title at bookmark time |
+| `story_url` | TEXT | Copy of story URL |
+| `story_source` | VARCHAR(50) | Source like "r/ClaudeAI" or "HackerNews" |
+| `story_category` | VARCHAR(50) | Classification category |
+| `story_topic_tags` | JSON | Array of topic tags |
+| `story_format_tag` | VARCHAR(50) | Format tag (tutorial, showcase, etc.) |
+| `post_id` | VARCHAR(50) | Original post ID for traceability (nullable) |
+
+**Indexes:** `digest_date`, `bookmarked_at`, `status`, `post_id`
+
+**Note:** The bookmark table is intentionally denormalized - story data is copied at bookmark time so bookmarks remain valid even if the original post is deleted.
 
 ### Cache Behavior
 

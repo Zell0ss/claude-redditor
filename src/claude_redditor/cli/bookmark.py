@@ -124,11 +124,14 @@ def bookmark_add(
             story_category=story.get('category', ''),
             story_topic_tags=story.get('topic_tags', []),
             story_format_tag=story.get('format_tag'),
+            post_id=story.get('post_id'),  # Link to original post
             notes=note,
             status=status
         )
         rprint(f"[green]✓ Bookmarked: {story_id}[/green]")
         rprint(f"  {story['title'][:60]}...")
+        if story.get('post_id'):
+            rprint(f"  [dim]Post: {story['post_id']}[/dim]")
         if note:
             rprint(f"  [dim]Note: {note}[/dim]")
     except Exception as e:

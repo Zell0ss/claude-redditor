@@ -225,10 +225,19 @@ class Bookmark(Base):
     story_topic_tags = Column(JSON, nullable=True, comment='Array of topic tags')
     story_format_tag = Column(String(50), nullable=True, comment='tutorial, code-snippet, etc.')
 
+    # Link to original post for traceability
+    post_id = Column(
+        String(50),
+        nullable=True,  # Nullable for backwards compatibility with existing bookmarks
+        index=True,
+        comment='Original post ID (reddit_abc123 or hn_12345678)'
+    )
+
     def to_dict(self):
         """Convert model to dict."""
         return {
             'story_id': self.story_id,
+            'post_id': self.post_id,
             'digest_date': str(self.digest_date) if self.digest_date else None,
             'bookmarked_at': str(self.bookmarked_at) if self.bookmarked_at else None,
             'notes': self.notes,

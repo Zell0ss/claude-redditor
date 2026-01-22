@@ -358,6 +358,7 @@ class Repository:
         story_category: str = '',
         story_topic_tags: List[str] = None,
         story_format_tag: str = None,
+        post_id: str = None,
         notes: str = None,
         status: str = 'to_read'
     ) -> None:
@@ -373,6 +374,7 @@ class Repository:
             story_category: Category (e.g., 'technical')
             story_topic_tags: List of topic tags
             story_format_tag: Format tag
+            post_id: Original post ID (reddit_abc123 or hn_12345678)
             notes: Optional user notes
             status: Initial status (to_read, to_implement, done)
         """
@@ -388,12 +390,13 @@ class Repository:
                 story_category=story_category,
                 story_topic_tags=story_topic_tags or [],
                 story_format_tag=story_format_tag,
+                post_id=post_id,
                 notes=notes,
                 status=status
             )
             session.add(bookmark)
             session.commit()
-            logger.info(f"Added bookmark: {story_id}")
+            logger.info(f"Added bookmark: {story_id} (post_id: {post_id})")
 
     def get_bookmarks(
         self,

@@ -312,6 +312,7 @@ def regenerate_json(
 
                     story = {
                         "id": f"{digest_id}_{idx:03d}",
+                        "post_id": row.id,  # Original post ID for traceability
                         "title": row.title or "",
                         "source": source,
                         "author": row.author or "unknown",

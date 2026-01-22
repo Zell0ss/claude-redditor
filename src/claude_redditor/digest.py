@@ -469,9 +469,12 @@ class DigestGenerator:
             post = item['post']
             article = item['article']
 
-            # Article section
+            # Build story ID: {date}_{seq}_{idx}
+            story_id = f"{date_str}_{next_num:02d}_{i:03d}"
+
+            # Article section with full story ID in title
             lines.extend([
-                f"## {i}. {article.get('article_title', post.get('title', 'Sin titulo'))}",
+                f"## {story_id}. {article.get('article_title', post.get('title', 'Sin titulo'))}",
                 "",
                 article.get('article_body', ''),
                 "",
@@ -619,6 +622,7 @@ class DigestGenerator:
         # Story ID will be set later with digest sequence number
         return {
             "id": "",  # Placeholder, updated in generate_json with digest sequence
+            "post_id": post_id,  # Original post ID for traceability (reddit_abc123 or hn_12345678)
             "title": post.get('title', ''),
             "source": source,
             "author": post.get('author', 'unknown'),
