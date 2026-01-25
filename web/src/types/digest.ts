@@ -1,5 +1,6 @@
 export interface Story {
   id: string;
+  post_id?: string;
   title: string;
   source: string;
   author: string;
@@ -12,6 +13,10 @@ export interface Story {
   format_tag: string | null;
   red_flags: string[];
   reasoning: string;
+  // Article content (from Claude digest generation)
+  article_title: string | null;
+  article_body: string | null;
+  radio_commentary: string | null;
 }
 
 export interface Digest {

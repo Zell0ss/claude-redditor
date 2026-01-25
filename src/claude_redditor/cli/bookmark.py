@@ -17,9 +17,9 @@ app = typer.Typer(
 
 @app.command("show")
 def bookmark_show(
-    date: str = typer.Argument(
+    digest_id: str = typer.Argument(
         ...,
-        help="Digest date (YYYY-MM-DD) or 'latest'"
+        help="Digest ID (e.g., 'claudeia_2026-01-25_01') or 'latest'"
     ),
 ):
     """
@@ -27,20 +27,25 @@ def bookmark_show(
 
     Examples:
 
-        reddit-analyzer bookmark show 2025-01-17
+        reddit-analyzer bookmark show claudeia_2026-01-25_01
 
         reddit-analyzer bookmark show latest
     """
     web_dir = settings.output_dir / 'web'
 
-    if date == 'latest':
+    if digest_id == 'latest':
         json_path = web_dir / 'latest.json'
     else:
-        json_path = web_dir / f'{date}.json'
+        json_path = web_dir / f'{digest_id}.json'
 
     if not json_path.exists():
         rprint(f"[red]Digest not found: {json_path}[/red]")
-        rprint(f"[dim]Run 'reddit-analyzer digest --format json' first[/dim]")
+        rprint(f"[dim]Run 'reddit-analyzer digest' first[/dim]")
+        # Show available digests
+        available = list(web_dir.glob('*.json'))
+        if available:
+            names = [f.stem for f in available if f.name != 'latest.json'][:5]
+            rprint(f"[dim]Available: {', '.join(names)}...[/dim]")
         raise typer.Exit(1)
 
     # Read JSON
@@ -52,7 +57,7 @@ def bookmark_show(
 def bookmark_add(
     story_id: str = typer.Argument(
         ...,
-        help="Story ID (e.g., '2025-01-17-003')"
+        help="Story ID in format 'YYYY-MM-DD_NN_NNN' (e.g., '2026-01-25_01_003')"
     ),
     note: Optional[str] = typer.Option(
         None,
@@ -68,13 +73,18 @@ def bookmark_add(
     """
     Add a story to bookmarks.
 
+    Story ID format: YYYY-MM-DD_NN_NNN where:
+      - YYYY-MM-DD is the digest date
+      - NN is the digest sequence number (01, 02, etc.)
+      - NNN is the story index (001, 002, etc.)
+
     Examples:
 
-        reddit-analyzer bookmark add 2025-01-17-003
+        reddit-analyzer bookmark add 2026-01-25_01_003
 
-        reddit-analyzer bookmark add 2025-01-17-003 --note "Interesting MCP server"
+        reddit-analyzer bookmark add 2026-01-25_01_003 --note "Interesting MCP server"
 
-        reddit-analyzer bookmark add 2025-01-17-003 --status to_implement
+        reddit-analyzer bookmark add 2026-01-25_01_003 --status to_implement
     """
     ensure_mysql_configured(settings)
 
@@ -83,20 +93,37 @@ def bookmark_add(
         rprint(f"[red]Invalid status '{status}'. Use: to_read, to_implement, done[/red]")
         raise typer.Exit(1)
 
-    # Extract date from story_id (format: YYYY-MM-DD-NNN)
-    try:
-        date_part = '-'.join(story_id.split('-')[:3])
-        datetime.strptime(date_part, '%Y-%m-%d')  # Validate format
-    except ValueError:
+    # Parse story_id (format: YYYY-MM-DD_NN_NNN, e.g., 2026-01-25_01_003)
+    parts = story_id.split('_')
+    if len(parts) != 3:
         rprint(f"[red]Invalid story_id format: {story_id}[/red]")
-        rprint("[dim]Expected format: YYYY-MM-DD-NNN (e.g., 2025-01-17-003)[/dim]")
+        rprint("[dim]Expected format: YYYY-MM-DD_NN_NNN (e.g., 2026-01-25_01_003)[/dim]")
         raise typer.Exit(1)
 
-    # Find the JSON file
-    json_path = settings.output_dir / 'web' / f'{date_part}.json'
-    if not json_path.exists():
-        rprint(f"[red]Digest not found: {json_path}[/red]")
+    date_part, seq_part, idx_part = parts
+
+    # Validate date format
+    try:
+        datetime.strptime(date_part, '%Y-%m-%d')
+    except ValueError:
+        rprint(f"[red]Invalid date in story_id: {date_part}[/red]")
+        rprint("[dim]Expected format: YYYY-MM-DD_NN_NNN (e.g., 2026-01-25_01_003)[/dim]")
         raise typer.Exit(1)
+
+    # Find the JSON file by pattern (handles different project names)
+    web_dir = settings.output_dir / 'web'
+    pattern = f'*_{date_part}_{seq_part}.json'
+    matching_files = list(web_dir.glob(pattern))
+
+    if not matching_files:
+        rprint(f"[red]Digest not found matching: {pattern}[/red]")
+        available = list(web_dir.glob('*.json'))
+        if available:
+            names = [f.stem for f in available if f.name != 'latest.json'][:5]
+            rprint(f"[dim]Available: {', '.join(names)}...[/dim]")
+        raise typer.Exit(1)
+
+    json_path = matching_files[0]  # Take first match
 
     # Find the story
     data = json.loads(json_path.read_text())
@@ -190,7 +217,7 @@ def bookmark_list(
 def bookmark_done(
     story_id: str = typer.Argument(
         ...,
-        help="Story ID to mark as done"
+        help="Story ID to mark as done (e.g., '2026-01-25_01_003')"
     ),
 ):
     """
@@ -198,7 +225,7 @@ def bookmark_done(
 
     Examples:
 
-        reddit-analyzer bookmark done 2025-01-17-003
+        reddit-analyzer bookmark done 2026-01-25_01_003
     """
     ensure_mysql_configured(settings)
 
@@ -221,7 +248,7 @@ def bookmark_done(
 def bookmark_status(
     story_id: str = typer.Argument(
         ...,
-        help="Story ID to update"
+        help="Story ID to update (e.g., '2026-01-25_01_003')"
     ),
     new_status: str = typer.Argument(
         ...,
@@ -233,7 +260,7 @@ def bookmark_status(
 
     Examples:
 
-        reddit-analyzer bookmark status 2025-01-17-003 to_implement
+        reddit-analyzer bookmark status 2026-01-25_01_003 to_implement
     """
     ensure_mysql_configured(settings)
 

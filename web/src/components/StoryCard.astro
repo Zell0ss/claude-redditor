@@ -22,9 +22,7 @@ const sourceIcon = getSourceIcon(story.source);
 <article class="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
   <header class="mb-3">
     <a
-      href={story.url}
-      target="_blank"
-      rel="noopener noreferrer"
+      href={`/story/${story.id}`}
       class="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors line-clamp-2"
     >
       {story.title}

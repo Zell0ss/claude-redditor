@@ -1,0 +1,185 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import type { Digest, Story } from '../../types/digest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Build all story pages from all digest JSON files
+export async function getStaticPaths() {
+  const digestsDir = path.resolve('../outputs/web');
+
+  if (!fs.existsSync(digestsDir)) {
+    return [];
+  }
+
+  const files = fs.readdirSync(digestsDir)
+    .filter(f => f.endsWith('.json') && f !== 'latest.json');
+
+  const paths: Array<{ params: { id: string }; props: { story: Story; digest: Digest; digestFilename: string } }> = [];
+
+  for (const filename of files) {
+    const filePath = path.join(digestsDir, filename);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const digest: Digest = JSON.parse(content);
+
+    for (const story of digest.stories) {
+      paths.push({
+        params: { id: story.id },
+        props: { story, digest, digestFilename: filename.replace('.json', '') }
+      });
+    }
+  }
+
+  return paths;
+}
+
+const { story, digest, digestFilename } = Astro.props;
+
+// Parse source to get icon
+const getSourceIcon = (source: string): string => {
+  if (source.startsWith('r/')) return '🔴';
+  if (source.includes('HN') || source.includes('Hacker')) return '🟠';
+  return '📰';
+};
+
+const sourceIcon = getSourceIcon(story.source);
+
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+---
+
+<Layout title={story.article_title || story.title}>
+  <div class="mb-6">
+    <a href={`/digest/${digestFilename}`} class="text-blue-600 hover:underline text-sm inline-flex items-center gap-1">
+      <span>←</span>
+      <span>Back to {formatDate(digest.generated_at)}</span>
+    </a>
+  </div>
+
+  <article class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <!-- Header -->
+    <header class="p-6 border-b border-gray-100">
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">
+        {story.article_title || story.title}
+      </h1>
+
+      <div class="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
+        <span class="flex items-center gap-1">
+          <span>{sourceIcon}</span>
+          <span>{story.source}</span>
+        </span>
+        <span>by {story.author}</span>
+        {story.score > 0 && (
+          <span class="flex items-center gap-1">
+            <span>▲</span>
+            <span>{story.score}</span>
+          </span>
+        )}
+        {story.num_comments > 0 && (
+          <span class="flex items-center gap-1">
+            <span>💬</span>
+            <span>{story.num_comments}</span>
+          </span>
+        )}
+      </div>
+
+      <!-- Tags -->
+      <div class="flex flex-wrap gap-2 mb-4">
+        <TagBadge tag={story.category} type="category" />
+        {story.topic_tags.map((tag) => (
+          <TagBadge tag={tag} type="topic" />
+        ))}
+        {story.format_tag && (
+          <TagBadge tag={story.format_tag} type="format" />
+        )}
+      </div>
+
+      <!-- Red flags -->
+      {story.red_flags.length > 0 && (
+        <div class="flex flex-wrap gap-1 mb-4">
+          {story.red_flags.map((flag) => (
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+              ⚠️ {flag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <!-- External link -->
+      <a
+        href={story.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+      >
+        <span>View Original Post</span>
+        <span>↗</span>
+      </a>
+    </header>
+
+    <!-- Article Content -->
+    <div class="p-6">
+      {story.article_body ? (
+        <div class="prose prose-gray max-w-none">
+          <div class="text-gray-800 leading-relaxed whitespace-pre-wrap">
+            {story.article_body}
+          </div>
+        </div>
+      ) : (
+        <div class="text-center py-8">
+          <p class="text-gray-500 mb-2">No analysis available for this story.</p>
+          <p class="text-sm text-gray-400">This story was indexed before article generation was enabled.</p>
+        </div>
+      )}
+    </div>
+
+    <!-- Radio Commentary -->
+    {story.radio_commentary && (
+      <div class="p-6 bg-gray-50 border-t border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+          <span>🎙️</span>
+          <span>Quick Summary</span>
+        </h2>
+        <p class="text-gray-600 text-sm italic">
+          {story.radio_commentary}
+        </p>
+      </div>
+    )}
+
+    <!-- Classification Reasoning -->
+    {story.reasoning && (
+      <div class="p-6 bg-blue-50 border-t border-blue-100">
+        <h2 class="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-2">
+          <span>🤖</span>
+          <span>Why this was marked as Signal</span>
+        </h2>
+        <p class="text-blue-800 text-sm">
+          {story.reasoning}
+        </p>
+      </div>
+    )}
+
+    <!-- Footer -->
+    <footer class="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+      <span>Story ID: {story.id}</span>
+      <span class="flex items-center gap-1">
+        <span>Confidence:</span>
+        <span class:list={[
+          'font-medium',
+          story.confidence >= 0.9 ? 'text-green-600' :
+          story.confidence >= 0.7 ? 'text-amber-600' : 'text-red-600'
+        ]}>
+          {Math.round(story.confidence * 100)}%
+        </span>
+      </span>
+    </footer>
+  </article>
+</Layout>

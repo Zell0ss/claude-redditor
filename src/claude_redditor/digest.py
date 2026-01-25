@@ -217,7 +217,7 @@ class DigestGenerator:
         date_str = datetime.now().strftime('%Y-%m-%d')
         stories = []
         for idx, art in enumerate(articles, 1):
-            story = self._build_story(art['item'], date_str, idx)
+            story = self._build_story(art['item'], date_str, idx, article=art['article'])
             stories.append(story)
 
         # Write JSON with SAME sequence number as markdown
@@ -595,7 +595,7 @@ class DigestGenerator:
         logger.info(f"JSON digest generated: {output_path}")
         return output_path
 
-    def _build_story(self, item: Dict, date_str: str, idx: int) -> Dict:
+    def _build_story(self, item: Dict, date_str: str, idx: int, article: Dict = None) -> Dict:
         """
         Build a single story dict for JSON output.
 
@@ -603,6 +603,7 @@ class DigestGenerator:
             item: Dict with 'post', 'classification', 'selftext_truncated'
             date_str: Date string (YYYY-MM-DD)
             idx: Story index (1-based)
+            article: Optional dict with 'article_title', 'article_body', 'radio_commentary'
 
         Returns:
             Story dict for JSON
@@ -634,5 +635,9 @@ class DigestGenerator:
             "topic_tags": classification.get('topic_tags', []),
             "format_tag": classification.get('format_tag'),
             "red_flags": classification.get('red_flags', []),
-            "reasoning": classification.get('reasoning', '')
+            "reasoning": classification.get('reasoning', ''),
+            # Article content (from Claude digest generation)
+            "article_title": article.get('article_title') if article else None,
+            "article_body": article.get('article_body') if article else None,
+            "radio_commentary": article.get('radio_commentary') if article else None,
         }

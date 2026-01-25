@@ -1,358 +1,385 @@
-# ClaudeRedditor - Briefing para Claude Web
+# ClaudeRedditor - Briefing for Claude
 
-Este documento está diseñado para que Claude Web (sin acceso al código) pueda entender el proyecto y discutir sobre él de forma informada.
-
----
-
-## Qué es este proyecto
-
-ClaudeRedditor es una herramienta CLI que analiza posts de Reddit y HackerNews para separar el contenido útil ("signal") del ruido ("noise"). Usa Claude como clasificador, una base de datos MariaDB como caché, y genera newsletters diarios en español.
-
-El caso de uso principal: monitorizar comunidades online sobre un tema específico (ej: IA, vino) y generar un digest diario con los posts más relevantes, filtrando el clickbait y las afirmaciones sin fuentes.
+> **Purpose**: Transfer knowledge between Claude Code and Claude Web, and serve as executive summary.
+>
+> **Audience**: Claude AI (both instances) and developer
 
 ---
 
-## Cómo funciona (flujo de datos)
+## What is this project
 
-```
-1. SCRAPING
-   Reddit (RSS o API) ──┐
-                        ├──► Posts crudos
-   HackerNews (Firebase)┘
+ClaudeRedditor is a CLI tool that analyzes posts from Reddit and HackerNews to separate useful content ("SIGNAL") from noise ("NOISE"). It uses Claude as classifier, MariaDB as cache, and generates daily newsletters in Spanish.
 
-2. CACHE
-   Posts crudos ──► MariaDB (evita re-procesar)
-
-3. CLASIFICACIÓN
-   Posts nuevos ──► Claude API ──► Categoría + Red Flags + Confianza
-
-4. TRUNCADO INTELIGENTE
-   - Posts SIGNAL/META: se guardan hasta 5000 caracteres
-   - Posts NOISE/UNRELATED: se truncan a 500 caracteres (ahorro de storage)
-
-5. DIGEST (opcional)
-   Posts SIGNAL no enviados ──► Claude genera artículo en español ──► Markdown
-```
+Main use case: monitor online communities about a specific topic (e.g., AI, wine) and generate a daily digest with the most relevant posts, filtering clickbait and unsourced claims.
 
 ---
 
-## Sistema de clasificación
-
-### Las 10 categorías
-
-| Grupo | Categoría | Qué significa |
-|-------|-----------|---------------|
-| **SIGNAL** | `technical` | Prompts, workflows, código funcional |
-| | `troubleshooting` | Problemas reales con soluciones |
-| | `research_verified` | Papers/experimentos con fuentes verificables |
-| **NOISE** | `mystical` | Afirmaciones de consciencia sin evidencia |
-| | `unverified_claim` | Aserciones técnicas sin fuentes |
-| | `engagement_bait` | Clickbait puro |
-| **META** | `community` | Discusión sobre el subreddit |
-| | `meme` | Humor/entretenimiento |
-| **OTHER** | `outlier` | No encaja claramente |
-| **UNRELATED** | `unrelated` | Fuera del tema configurado |
-
-### Red flags que se detectan
-
-El clasificador busca patrones específicos que indican contenido problemático:
-
-1. **no_source**: "researchers say", "studies show" (sin citar la fuente)
-2. **link_in_bio**: "check my profile", "link in bio" (autopromoción)
-3. **mystical_language**: "consciousness emerged", "sentient", "awakening"
-4. **cannot_explain**: "researchers puzzled", "mysterious", "defies explanation"
-5. **sensationalist**: "you won't believe", "shocking", "mind-blowing"
-6. **precise_numbers**: Números muy precisos sin fuente (ej: "95.7% más efectivo")
-
-### Signal Ratio
-
-La métrica principal es el "signal ratio":
+## How it works (data flow)
 
 ```
-Signal Ratio = posts SIGNAL / (posts totales - posts UNRELATED)
+1. INGESTION: Reddit (RSS/PRAW) + HackerNews (Firebase) → Raw posts
+2. PROCESSING: Classifier (Claude Haiku) → Category + Red Flags + Topic Tags
+3. STORAGE: MariaDB (posts + classifications + bookmarks)
+4. OUTPUT: Digest (Markdown + JSON) → Web viewer (Astro)
 ```
 
-Se excluyen los UNRELATED porque no son ruido del tema, simplemente están fuera de scope.
+**Flow description**:
 
-| Ratio | Calificación |
-|-------|--------------|
-| ≥70% | Excelente |
-| 50-69% | Bueno |
-| 30-49% | Regular |
-| <30% | Bajo |
+1. **Scraping**: The system queries Reddit (via RSS or PRAW API) and HackerNews (Firebase API) looking for posts matching the project's keywords/subreddits.
+
+2. **Cache check**: Before classifying, it checks if the post already exists in MariaDB. If it exists and has a classification for this project, it's reused (~70-80% API cost savings).
+
+3. **Classification**: New posts are sent to Claude in batches of 20. Claude assigns one of 10 categories, detected red flags, topic_tags and format_tag. Selftext truncation happens AFTER classification: SIGNAL/META keep up to 5000 chars, NOISE/UNRELATED only 500.
+
+4. **Digest**: SIGNAL posts not yet sent (`sent_in_digest_at IS NULL`) are processed with Claude to generate articles in Spanish. Dual output: markdown for email/reading + JSON for web viewer.
 
 ---
 
-## Multi-proyecto
+## Tech Stack
 
-El sistema soporta múltiples proyectos aislados como **entidades autocontenidas**. Cada proyecto es un directorio en `projects/` con:
-
-```
-projects/
-├── claudeia/
-│   ├── config.yaml        # topic, subreddits, hn_keywords
-│   └── prompts/
-│       ├── classify.md    # Prompt de clasificación (categorías específicas)
-│       └── digest.md      # Prompt de digest (formato newsletter)
-└── wineworld/
-    ├── config.yaml
-    └── prompts/
-        ├── classify.md    # Categorías específicas para vino
-        └── digest.md      # "La Gaceta del Vino"
-```
-
-### config.yaml de un proyecto
-
-```yaml
-name: claudeia
-description: "AI and LLM content, focused on Claude"
-topic: "AI and Large Language Models, particularly Claude and Claude Code"
-
-sources:
-  reddit:
-    subreddits:
-      - ClaudeAI
-      - Claude
-      - ClaudeCode
-  hackernews:
-    keywords:
-      - claude
-      - anthropic
-      - ai
-      - llm
-```
-
-### Añadir un nuevo proyecto
-
-**Zero code changes** - solo crear directorio:
-
-1. Crear `projects/{nombre}/config.yaml`
-2. Crear `projects/{nombre}/prompts/classify.md` (copiar de existente y adaptar)
-3. Crear `projects/{nombre}/prompts/digest.md` (copiar de existente y adaptar)
-4. Usar `--project {nombre}` en comandos CLI
-
-El sistema **autodescubre** proyectos al escanear `projects/` buscando directorios con `config.yaml`.
-
-### Aislamiento de datos
-
-- Datos aislados en la base de datos (columna `project` en todas las tablas)
-- **Decisión de diseño importante**: Un mismo post puede existir en dos proyectos con clasificaciones diferentes. Por ejemplo, un post sobre "IA aplicada al vino" podría ser:
-  - `technical` en el proyecto "wineworld"
-  - `unrelated` en el proyecto "claudeia"
-
-Esto es intencional: la clasificación depende del contexto del proyecto.
+- **Language**: Python 3.11+
+- **Main Frameworks/Libs**:
+  - Typer: Modular CLI with subcommands
+  - SQLAlchemy: ORM for MariaDB
+  - pydantic-settings: Configuration (secrets in `.env`)
+  - Rich: Formatted terminal output
+- **Database**: MariaDB - Chosen for concurrency support (future web dashboard) and familiarity
+- **External APIs**:
+  - Anthropic (Claude): Classification and digest generation
+  - Reddit: RSS (default) or PRAW (if credentials provided)
+  - HackerNews: Firebase API (no auth, 500 req/min)
+- **Infrastructure**: Local, automatable with cron/N8N
 
 ---
 
-## Truncado de selftext
+## Main CLI Commands
 
-Esta es una optimización de storage que puede causar confusión:
+| Command | What it does | Usage example |
+|---------|--------------|---------------|
+| `scan <sub>` | Scan Reddit subreddit(s) | `scan all --project claudeia --limit 50` |
+| `scan-hn` | Scan HackerNews by project keywords | `scan-hn --project claudeia --limit 30` |
+| `digest` | Generate daily newsletter (markdown+JSON) | `digest --project claudeia --dry-run` |
+| `bookmark add <id>` | Save story with optional notes | `bookmark add 2026-01-21_01_003 --note "Review"` |
+| `bookmark list` | List bookmarks (filterable by status) | `bookmark list --status to_read` |
+| `regenerate-json` | Reconstruct JSONs from DB | `regenerate-json --project claudeia --date all` |
+| `init-db` | Create/migrate database schema | `init-db` |
+| `config` | Show configuration and available projects | `config` |
 
-1. **En clasificación**: Se usa el selftext completo (o hasta 5000 chars)
-2. **Al guardar en DB**:
-   - SIGNAL/META → hasta 5000 chars
-   - NOISE/UNRELATED → truncado a 500 chars
-3. **En digest**: Si detectamos que el selftext fue truncado (longitud exacta = 5000), intentamos recuperar el contenido completo via URL
+---
+
+## Project Structure
+
+```
+ClaudeRedditor/
+├── src/claude_redditor/
+│   ├── cli/              # CLI commands (Typer)
+│   │   ├── scan.py       # scan, scan-hn, compare
+│   │   ├── digest_cmd.py # digest
+│   │   ├── bookmark.py   # bookmark show|add|list|done|status
+│   │   └── db.py         # init-db, history, cache-stats, regenerate-json
+│   ├── db/               # ORM and queries
+│   │   ├── models.py     # RedditPost, Classification, Bookmark, ScanHistory
+│   │   └── repository.py # All SQL queries
+│   ├── scrapers/         # Data sources
+│   │   ├── reddit.py     # RSS + PRAW
+│   │   └── hackernews.py # Firebase API
+│   ├── projects/         # Self-contained projects
+│   │   ├── claudeia/     # config.yaml + prompts/
+│   │   └── wineworld/    # config.yaml + prompts/
+│   ├── classifier.py     # Classification logic (batches)
+│   ├── digest.py         # Markdown + JSON generation
+│   └── analyzer.py       # Metrics and smart truncation
+├── outputs/              # Generated files
+│   ├── digests/          # Markdown newsletters
+│   └── web/              # JSON for web viewer
+└── web/                  # Astro static site
+```
+
+**Key modules**:
+- **cli/**: Commands isolated by responsibility. `__init__.py` aggregates them into main app.
+- **projects/**: Each project is self-contained with `config.yaml` (subreddits, keywords) and `prompts/` (classify.md, digest.md). Zero code changes to add project.
+- **db/repository.py**: Centralizes ALL queries. Never direct SQL in other modules.
+
+---
+
+## Critical Design Decisions
+
+### Projects as self-contained entities
+
+**Why**: Allows adding new projects (e.g., "cryptonews") without touching Python code. Just create directory with config.yaml and prompts.
+
+**Alternatives rejected**:
+- Centralized config in .env (inflexible, doesn't scale)
+- Hardcode projects in code (requires deployment per change)
+
+**Trade-off accepted**: More files to maintain per project.
+
+---
+
+### RSS as default for Reddit
+
+**Why**: No API key required, sufficient for basic monitoring (50-100 posts/scan).
+
+**Alternatives rejected**: Always require PRAW (unnecessary entry barrier).
+
+**Trade-off accepted**: Lower volume than PRAW, but works out-of-the-box.
+
+---
+
+### Truncation AFTER classification
+
+**Why**: Classification needs full context to detect red flags. NOISE storage (500 chars) doesn't justify storing everything.
+
+**Alternatives rejected**: Truncate before (loses accuracy), store everything (unnecessary storage).
+
+**Trade-off accepted**: Truncation logic coupled to categories.
+
+---
+
+### One post, multiple classifications
+
+**Why**: Same post can be `technical` in project "wineworld" but `unrelated` in "claudeia". Classification depends on project context.
+
+**Alternatives rejected**: One global classification per post (loses specificity).
+
+**Trade-off accepted**: Table `classifications` has UNIQUE(post_id, project), not just post_id.
+
+---
+
+## Data and Models
+
+### Main Data Model
+
+```mermaid
+erDiagram
+    posts ||--o{ classifications : has
+    posts {
+        string id PK "reddit_abc123 or hn_12345678"
+        string source "reddit|hackernews"
+        string project "claudeia|wineworld"
+        string subreddit
+        text title
+        text selftext "truncated based on category"
+        bigint created_utc
+    }
+    classifications {
+        int id PK
+        string post_id FK
+        string project
+        enum category "10 categories"
+        json topic_tags "prompts,tools,models..."
+        string format_tag "tutorial,showcase..."
+        timestamp sent_in_digest_at
+    }
+    bookmarks {
+        int id PK
+        string story_id UK "2026-01-21_01_003"
+        string post_id "reddit_abc123"
+        text story_title "denormalized"
+        enum status "to_read|to_implement|done"
+    }
+```
+
+**Relationships**:
+- `posts` → `classifications`: 1:N (one post can have classification in multiple projects)
+- `bookmarks` → `posts`: Soft reference via `post_id` (denormalized to avoid JOINs)
+
+---
+
+### Data Transformation Flow
+
+```
+Raw Post (Reddit/HN API)
+  → Scraper normalizes to common dict
+  → Cache check (MariaDB)
+  → Classifier (Claude Haiku, batch=20)
+  → Smart truncation (5000 vs 500 chars)
+  → Save to DB
+  → Digest query (SIGNAL + sent_in_digest_at IS NULL)
+  → Claude generates Spanish article
+  → Output: Markdown + JSON
+```
+
+**Formats**:
+- Input: RSS XML (Reddit) / JSON (HN Firebase)
+- Output: Markdown newsletter + JSON for web viewer
+
+---
+
+## Configuration
+
+### Critical Environment Variables
+
+**Required**:
+- `ANTHROPIC_API_KEY`: Get at console.anthropic.com
+
+**Optional**:
+- `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`: Enables cache (highly recommended)
+- `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`: Enables PRAW (faster than RSS)
+
+### Configuration Files
+
+- `.env`: Secrets only (API keys, passwords)
+- `projects/{name}/config.yaml`: Project definition (topic, subreddits, keywords)
+- `projects/{name}/prompts/classify.md`: Project-specific classification prompt
+- `projects/{name}/prompts/digest.md`: Newsletter generation prompt
+
+---
+
+## Current State
+
+**Version**: 1.0 (production)
+
+**Last update**: January 2026
+
+### Features
+
+✅ **Implemented**:
+- 9 CLI commands + 5 bookmark subcommands
+- Multi-project with auto-discovery
+- Reddit (RSS/PRAW) + HackerNews
+- 10 categories + red flags + topic_tags
+- Dual digest output (markdown + JSON)
+- Bookmarks with traceability (post_id)
+- Web viewer (Astro)
+
+📋 **Known TODOs**:
+- More sources (Twitter/X, newsletters)
+- Real-time alerts
+- Dashboard with historical metrics
+
+---
+
+## Typical Use Cases
+
+### Case 1: Full daily scan
+
+**Goal**: Scan all project sources and generate digest
+
+**Flow**:
+1. `./reddit-analyzer scan all --include-hn --project claudeia --limit 50`
+2. `./reddit-analyzer digest --project claudeia`
+3. Result: `outputs/digests/digest_2026-01-24.md` + `outputs/web/claudeia_2026-01-24_01.json`
+
+---
+
+### Case 2: Historical JSON backfill
+
+**Goal**: Reconstruct JSONs for web viewer from existing data
+
+**Flow**:
+1. `./reddit-analyzer regenerate-json --project claudeia --date all`
+2. Result: JSONs created for each date with `sent_in_digest_at`
+
+---
+
+### Case 3: Save story for later review
+
+**Goal**: Bookmark an interesting story from the digest
+
+**Flow**:
+1. `./reddit-analyzer bookmark show latest` (view available stories)
+2. `./reddit-analyzer bookmark add 2026-01-24_01_003 --note "Try this prompt"`
+3. `./reddit-analyzer bookmark list --status to_read`
+
+---
+
+## Limitations and Caveats
+
+### Known Limitations
+
+- **No full content scraping**: External URLs are not automatically fetched (only if selftext truncated)
+- **No image/video processing**: Text only
+- **HackerNews limited to top 500**: Firebase API doesn't allow full-text search
+
+### Non-intuitive Behaviors
+
+- **Selftext of exactly 5000 chars indicates truncation**: Digest will attempt to fetch full content
+- **Story IDs change if JSON is regenerated**: Sequence number may vary
+- **Denormalized bookmarks**: Changes to original post are not reflected in bookmark
+
+---
+
+## Development Context
+
+**Original motivation**: Automate daily filtering of r/ClaudeAI for a Spanish AI podcast, separating useful technical content from typical Reddit noise.
+
+**Evolution**: Grew from single-subreddit to multi-project, multi-source, with web viewer.
+
+**Current usage**:
+- Frequency: Daily (cron/N8N)
+- Context: "La Gaceta IA" newsletter generation for Spanish-speaking AI community
+
+---
+
+## Key Code Patterns
+
+### Most Common Usage Pattern
 
 ```python
-# Detección de truncado en digest
-if len(post.selftext) == 5000 and post.url:
-    full_content = fetch_full_content(post.url)
+# Scan with project context
+from claude_redditor.projects import ProjectLoader
+loader = ProjectLoader()
+project = loader.get_project("claudeia")  # Auto-discovers from projects/
+
+# All queries go through Repository
+from claude_redditor.db.repository import Repository
+repo = Repository(db_connection)
+posts = repo.get_unclassified_posts(project="claudeia")
 ```
 
 ---
 
-## El digest (newsletter)
-
-El digest genera un newsletter en español llamado "La Gaceta IA" con los posts SIGNAL que aún no se han enviado.
-
-### Formato de salida
-
-```markdown
-# La Gaceta IA
-*Fecha: 2024-01-15*
-
-## Artículo 1: [Título del post]
-
-**Fuente**: r/ClaudeAI | u/author | technical
-**URL**: https://reddit.com/...
-
-[Artículo generado por Claude en español, 2-3 párrafos]
-
----
-
-## Artículo 2: ...
-```
-
-### Proceso de generación
-
-1. Query: posts SIGNAL donde `sent_in_digest_at IS NULL`
-2. Por cada post:
-   - Si selftext truncado → fetch contenido completo
-   - Claude genera artículo en español
-   - Claude extrae puntos clave
-3. Guardar markdown en `outputs/digests/`
-4. Marcar posts como enviados (actualizar `sent_in_digest_at`)
-
----
-
-## Comandos CLI disponibles
-
-| Comando | Qué hace |
-|---------|----------|
-| `scan <subreddit>` | Escanea un subreddit de Reddit |
-| `scan-hn` | Escanea HackerNews por keywords |
-| `compare` | Compara signal ratio entre subreddits |
-| `digest` | Genera el newsletter diario (markdown/json/both) |
-| `config` | Muestra configuración actual |
-| `init-db` | Inicializa/migra la base de datos |
-| `history` | Muestra clasificaciones históricas |
-| `cache-stats` | Estadísticas del caché |
-| `bookmark show <date>` | Ver stories de un digest JSON |
-| `bookmark add <id>` | Añadir bookmark con notas |
-| `bookmark list` | Listar bookmarks (filtrar por status) |
-| `bookmark done <id>` | Marcar bookmark como completado |
-| `bookmark status <id> <status>` | Cambiar estado del bookmark |
-
----
-
-## Stack técnico
-
-- **Python 3.11+** con **Typer** para CLI (estructura modular en `cli/`)
-- **Claude API** (Anthropic) para clasificación y generación
-- **MariaDB** para caché (opcional pero recomendado)
-- **SQLAlchemy** como ORM
-- **pydantic-settings** para configuración (solo secrets en `.env`)
-- **PyYAML** para configuración de proyectos
-- **Reddit**: RSS por defecto, PRAW si hay credenciales
-- **HackerNews**: Firebase API (sin auth, 500 req/min)
-
----
-
-## Decisiones de diseño no obvias
-
-1. **RSS por defecto para Reddit**: No requiere API key, suficiente para monitoreo básico
-
-2. **Batch de 20 posts por llamada a Claude**: Balance entre tokens y latencia
-
-3. **Truncado DESPUÉS de clasificar**: La clasificación ve todo el contenido, pero NOISE no merece storage
-
-4. **Digest solo SIGNAL**: Los posts META (community, meme) no van al newsletter
-
-5. **Español en digest**: El target es una newsletter en español, aunque las fuentes sean en inglés
-
-6. **N8N para automatización**: Se integra con N8N para ejecución diaria via cron
-
-7. **Proyectos como entidades autocontenidas**: Cada proyecto tiene su propio `config.yaml` y `prompts/`. Zero code changes para añadir un nuevo proyecto - solo crear directorio.
-
-8. **Prompts específicos por proyecto**: El proyecto de vino tiene categorías diferentes (tasting, winemaking, viticulture) que el de IA (technical, troubleshooting). Cada proyecto define sus propios prompts de clasificación y digest.
-
-9. **`.env` solo para secrets**: La configuración de proyectos (subreddits, topics, keywords) está en `projects/{name}/config.yaml`, no en variables de entorno.
-
----
-
-## Estado actual (Enero 2026)
-
-- ✅ 8 comandos CLI + 5 subcomandos bookmark (Typer, estructura modular en `cli/`)
-- ✅ Multi-proyecto operativo con **auto-discovery**
-- ✅ Proyectos como entidades autocontenidas (`projects/{name}/`)
-- ✅ Reddit + HackerNews como fuentes
-- ✅ Caché MariaDB
-- ✅ Digest en español (markdown)
-- ✅ Integración N8N documentada
-- ✅ **Multi-tags**: topic_tags (array) + format_tag (single) en clasificaciones
-- ✅ **JSON export**: `digest --format json` genera `outputs/web/{date}.json` + `latest.json` symlink
-- ✅ **Bookmarks CLI**: show, add, list, done, status
-- ✅ **ProjectLoader**: Auto-descubre proyectos desde `projects/`
-
-**Roadmap activo** (ver `docs/handover_multitag_web.md`):
-- ✅ Sprint 0: Schema (migration 006)
-- ✅ Sprint 1: Multi-tags en clasificador
-- ✅ Sprint 2: JSON export
-- ✅ Sprint 3: CLI de bookmarks
-- ✅ Sprint 3.5: Proyectos autocontenidos (config.yaml + prompts/)
-- ⏳ Sprint 4: Web estática con Astro
-- ⏳ Sprint 5: Automatización con cron
-
-**Posibles mejoras futuras**:
-- Más fuentes (Twitter/X, newsletters, blogs)
-- Alertas en tiempo real
-- Clasificación con embeddings (reducir costes API)
-
----
-
-## Snippets clave (para referencia)
-
-### Categorías y su clasificación
+### Extension Pattern: New Data Source
 
 ```python
-class CategoryEnum(str, Enum):
-    # SIGNAL (contenido útil)
-    TECHNICAL = "technical"
-    TROUBLESHOOTING = "troubleshooting"
-    RESEARCH_VERIFIED = "research_verified"
+# scrapers/new_source.py
+from .base import BaseScraper
 
-    # NOISE (contenido problemático)
-    MYSTICAL = "mystical"
-    UNVERIFIED_CLAIM = "unverified_claim"
-    ENGAGEMENT_BAIT = "engagement_bait"
-
-    # META
-    COMMUNITY = "community"
-    MEME = "meme"
-
-    # OTHER
-    OUTLIER = "outlier"
-
-    # UNRELATED
-    UNRELATED = "unrelated"
-```
-
-### Red flags patterns
-
-```python
-RED_FLAG_PATTERNS = {
-    "no_source": ["researchers say", "studies show", "experiments found"],
-    "link_in_bio": ["link in bio", "check my profile"],
-    "mystical_language": ["consciousness emerged", "sentient", "awakening"],
-    "cannot_explain": ["can't explain", "researchers puzzled", "mysterious"],
-    "sensationalist": ["you won't believe", "shocking", "mind-blowing"],
-}
-```
-
-### Truncado inteligente
-
-```python
-# En analyzer.py - después de clasificar, antes de guardar
-if CategoryEnum.is_low_value(category):  # NOISE o UNRELATED
-    post['selftext'] = post['selftext'][:500]  # Truncar a 500 chars
-# Si no es low_value, se guarda hasta 5000 chars
-```
-
-### Detección de contenido truncado en digest
-
-```python
-# En digest.py - si el selftext tiene exactamente 5000 chars, probablemente truncado
-if item['selftext_truncated'] and post.get('url'):
-    full_content = fetch_full_content(post['url'])
+class NewSourceScraper(BaseScraper):
+    def fetch_posts(self, keywords: list, limit: int) -> list[dict]:
+        # Normalize to common format:
+        # {id, title, author, score, url, selftext, created_utc}
+        pass
 ```
 
 ---
 
-## Preguntas frecuentes para discusión
+## Notes for Claude Web
 
-1. **¿Por qué no usar embeddings para clasificar?**
-   - Coste vs precisión: Claude es más caro pero más preciso para detección de red flags
+**Context for architecture discussions**:
+- The system prioritizes simplicity over features. Each project is self-contained.
+- MariaDB cache is critical for costs (70-80% savings on API).
+- The 10 categories enable granular metrics, don't simplify.
 
-2. **¿Por qué 10 categorías y no menos?**
-   - Granularidad: permite métricas más finas y reglas específicas por categoría
+**Pending decisions**:
+- Embeddings for pre-filtering before Claude? (trade-off: accuracy vs cost)
+- Store full content from external URLs? (trade-off: storage vs utility)
 
-3. **¿Por qué español en el digest?**
-   - Target audience: newsletter para comunidad hispanohablante de IA
-
-4. **¿Por qué truncar NOISE a 500 chars?**
-   - Storage: NOISE no se usa en digest, no vale la pena guardar todo
+**Areas for improvement**:
+- Automated testing (currently manual)
+- Classification quality metrics (precision/recall)
 
 ---
 
-*Este briefing está actualizado a Enero 2026. Para detalles de implementación, consultar el código fuente.*
+## Notes for Claude Code
+
+**Project conventions**:
+- CLI commands in separate files under `cli/`
+- All SQL queries in `db/repository.py`
+- Project config in YAML, secrets in .env
+- Output formatting with Rich (tables, panels)
+
+**Areas requiring attention**:
+- `classifier.py`: API refusal handling and category auto-correction
+- `digest.py`: Sequence number logic for multiple digests per day
+
+**When contributing**:
+- Use `--project` flag consistently
+- Adding new project = just create directory in `projects/`
+- Don't hardcode categories, use enums from `core/enums.py`
+
+---
+
+*Last update: January 2026*
+*Generated from: main branch*
