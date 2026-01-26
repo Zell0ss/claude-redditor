@@ -14,7 +14,7 @@ export async function getStaticPaths() {
   }
 
   const files = fs.readdirSync(digestsDir)
-    .filter(f => f.endsWith('.json') && f !== 'latest.json');
+    .filter(f => f.endsWith('.json') && f !== 'latest.json' && f !== 'bookmarks.json');
 
   const paths: Array<{ params: { id: string }; props: { story: Story; digest: Digest; digestFilename: string } }> = [];
 

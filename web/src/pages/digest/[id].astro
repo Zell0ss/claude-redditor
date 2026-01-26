@@ -13,7 +13,7 @@ export async function getStaticPaths() {
   }
 
   const files = fs.readdirSync(digestsDir)
-    .filter(f => f.endsWith('.json') && f !== 'latest.json');
+    .filter(f => f.endsWith('.json') && f !== 'latest.json' && f !== 'bookmarks.json');
 
   return files.map(filename => ({
     params: { id: filename.replace('.json', '') },

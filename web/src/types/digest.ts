@@ -38,3 +38,32 @@ export interface DigestMeta {
   generated_at: string;
   filename: string;
 }
+
+export interface Bookmark {
+  id: string;
+  story_id: string;
+  digest_date: string | null;
+  bookmarked_at: string | null;
+  notes: string | null;
+  status: 'to_read' | 'to_implement' | 'done';
+  title: string;
+  url: string;
+  source: string;
+  category: string;
+  topic_tags: string[];
+  format_tag: string | null;
+  post_id: string | null;
+  author: string;
+  score: number;
+  num_comments: number;
+  confidence: number;
+  red_flags: string[];
+  reasoning: string;
+}
+
+export interface BookmarksExport {
+  exported_at: string;
+  bookmark_count: number;
+  status_filter: string;
+  bookmarks: Bookmark[];
+}

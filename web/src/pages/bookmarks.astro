@@ -1,0 +1,156 @@
+---
+import Layout from '../layouts/Layout.astro';
+import BookmarkCard from '../components/BookmarkCard.astro';
+import type { BookmarksExport, Digest } from '../types/digest';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Read bookmarks JSON
+const webDir = path.resolve('../outputs/web');
+const bookmarksPath = path.join(webDir, 'bookmarks.json');
+
+let bookmarksData: BookmarksExport | null = null;
+if (fs.existsSync(bookmarksPath)) {
+  const content = fs.readFileSync(bookmarksPath, 'utf-8');
+  bookmarksData = JSON.parse(content);
+}
+
+// Build a set of existing story IDs from all digest files
+const existingStoryIds = new Set<string>();
+if (fs.existsSync(webDir)) {
+  const digestFiles = fs.readdirSync(webDir)
+    .filter(f => f.endsWith('.json') && f !== 'latest.json' && f !== 'bookmarks.json');
+
+  for (const filename of digestFiles) {
+    try {
+      const filePath = path.join(webDir, filename);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const digest: Digest = JSON.parse(content);
+      for (const story of digest.stories) {
+        existingStoryIds.add(story.id);
+      }
+    } catch {
+      // Skip invalid files
+    }
+  }
+}
+
+// Group bookmarks by status
+const byStatus = {
+  to_read: bookmarksData?.bookmarks.filter(b => b.status === 'to_read') || [],
+  to_implement: bookmarksData?.bookmarks.filter(b => b.status === 'to_implement') || [],
+  done: bookmarksData?.bookmarks.filter(b => b.status === 'done') || [],
+};
+
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+---
+
+<Layout title="Bookmarks - Digest Viewer">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Bookmarks</h1>
+    <p class="text-gray-600">Your saved stories for later reference</p>
+  </div>
+
+  {!bookmarksData ? (
+    <div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
+      <p class="text-gray-500 mb-2">No bookmarks file found.</p>
+      <p class="text-sm text-gray-400">
+        Run <code class="bg-gray-100 px-1 rounded">./reddit-analyzer bookmark export</code> to generate it.
+      </p>
+    </div>
+  ) : bookmarksData.bookmarks.length === 0 ? (
+    <div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
+      <p class="text-gray-500">No bookmarks yet.</p>
+      <p class="text-sm text-gray-400 mt-2">
+        Use <code class="bg-gray-100 px-1 rounded">./reddit-analyzer bookmark add &lt;story_id&gt;</code> to save stories.
+      </p>
+    </div>
+  ) : (
+    <div class="space-y-8">
+      <!-- Stats bar -->
+      <div class="flex items-center justify-between bg-white rounded-lg border border-gray-200 p-4">
+        <div class="flex items-center gap-6 text-sm">
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+            <span class="text-gray-600">To Read: <span class="font-medium">{byStatus.to_read.length}</span></span>
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            <span class="text-gray-600">To Implement: <span class="font-medium">{byStatus.to_implement.length}</span></span>
+          </span>
+          <span class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+            <span class="text-gray-600">Done: <span class="font-medium">{byStatus.done.length}</span></span>
+          </span>
+        </div>
+        <div class="text-xs text-gray-400">
+          Updated: {formatDate(bookmarksData.exported_at)}
+        </div>
+      </div>
+
+      <!-- To Read Section -->
+      {byStatus.to_read.length > 0 && (
+        <section>
+          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+            To Read ({byStatus.to_read.length})
+          </h2>
+          <div class="space-y-4">
+            {byStatus.to_read.map((bookmark) => (
+              <BookmarkCard
+                bookmark={bookmark}
+                storyPageExists={existingStoryIds.has(bookmark.story_id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <!-- To Implement Section -->
+      {byStatus.to_implement.length > 0 && (
+        <section>
+          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            To Implement ({byStatus.to_implement.length})
+          </h2>
+          <div class="space-y-4">
+            {byStatus.to_implement.map((bookmark) => (
+              <BookmarkCard
+                bookmark={bookmark}
+                storyPageExists={existingStoryIds.has(bookmark.story_id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <!-- Done Section -->
+      {byStatus.done.length > 0 && (
+        <section>
+          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+            Done ({byStatus.done.length})
+          </h2>
+          <div class="space-y-4">
+            {byStatus.done.map((bookmark) => (
+              <BookmarkCard
+                bookmark={bookmark}
+                storyPageExists={existingStoryIds.has(bookmark.story_id)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )}
+</Layout>

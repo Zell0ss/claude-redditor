@@ -26,9 +26,12 @@ const { title, description = 'AI-curated content digests' } = Astro.props;
             <span>📰</span>
             <span>Digest Viewer</span>
           </a>
-          <div class="text-sm text-gray-500">
-            AI-curated content
-          </div>
+          <nav class="flex items-center gap-4">
+            <a href="/bookmarks" class="text-sm text-gray-600 hover:text-blue-600 transition-colors flex items-center gap-1">
+              <span>🔖</span>
+              <span>Bookmarks</span>
+            </a>
+          </nav>
         </div>
       </div>
     </nav>

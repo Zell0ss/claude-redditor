@@ -281,3 +281,74 @@ def bookmark_status(
     else:
         rprint(f"[yellow]Bookmark not found: {story_id}[/yellow]")
         raise typer.Exit(1)
+
+
+@app.command("export")
+def bookmark_export(
+    status: Optional[str] = typer.Option(
+        None,
+        "--status", "-s",
+        help="Filter by status: to_read, to_implement, done (default: all)"
+    ),
+    limit: int = typer.Option(
+        100,
+        "--limit", "-l",
+        help="Maximum number of bookmarks to export"
+    ),
+):
+    """
+    Export bookmarks to JSON for web viewer.
+
+    Creates outputs/web/bookmarks.json with enriched bookmark data.
+
+    Examples:
+
+        reddit-analyzer bookmark export
+
+        reddit-analyzer bookmark export --status to_read
+
+        reddit-analyzer bookmark export --limit 50
+    """
+    ensure_mysql_configured(settings)
+
+    from ..db.connection import DatabaseConnection
+    from ..db.repository import Repository
+
+    db = DatabaseConnection(settings)
+    repo = Repository(db)
+
+    # Get enriched bookmarks from view
+    bookmarks = repo.get_rich_bookmarks(
+        status=status if status != 'all' else None,
+        limit=limit
+    )
+
+    if not bookmarks:
+        rprint("[yellow]No bookmarks found to export[/yellow]")
+        raise typer.Exit(0)
+
+    # Build JSON structure
+    output = {
+        'exported_at': datetime.now().isoformat() + 'Z',
+        'bookmark_count': len(bookmarks),
+        'status_filter': status or 'all',
+        'bookmarks': bookmarks
+    }
+
+    # Write to outputs/web/bookmarks.json
+    web_dir = settings.output_dir / 'web'
+    web_dir.mkdir(parents=True, exist_ok=True)
+    output_path = web_dir / 'bookmarks.json'
+
+    output_path.write_text(json.dumps(output, indent=2, ensure_ascii=False))
+
+    rprint(f"[green]✓ Exported {len(bookmarks)} bookmarks to {output_path}[/green]")
+
+    # Show summary by status
+    by_status = {}
+    for b in bookmarks:
+        s = b.get('status', 'unknown')
+        by_status[s] = by_status.get(s, 0) + 1
+
+    for s, count in sorted(by_status.items()):
+        rprint(f"  [dim]{s}: {count}[/dim]")

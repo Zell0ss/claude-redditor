@@ -448,3 +448,101 @@ class Repository:
             )
             session.commit()
             return result.rowcount > 0
+
+    def get_rich_bookmarks(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        Get enriched bookmarks from v_rich_bookmark view.
+        Includes data from posts and classifications tables.
+
+        Args:
+            status: Filter by status (to_read, to_implement, done) or None for all
+            limit: Maximum number of bookmarks to return
+
+        Returns:
+            List of enriched bookmark dicts
+        """
+        from sqlalchemy import text
+
+        with self.db.get_session() as session:
+            query = """
+                SELECT
+                    story_id,
+                    digest_date,
+                    bookmarked_at,
+                    notes,
+                    status,
+                    story_title,
+                    story_url,
+                    story_source,
+                    story_category,
+                    story_topic_tags,
+                    story_format_tag,
+                    post_id,
+                    author,
+                    score,
+                    num_comments,
+                    confidence,
+                    red_flags,
+                    reasoning
+                FROM v_rich_bookmark
+            """
+
+            params = {}
+            if status:
+                query += " WHERE status = :status"
+                params['status'] = status
+
+            query += " ORDER BY bookmarked_at DESC LIMIT :limit"
+            params['limit'] = limit
+
+            result = session.execute(text(query), params)
+            rows = result.fetchall()
+
+            bookmarks = []
+            for row in rows:
+                # Parse JSON fields that may come as strings
+                import json as json_module
+
+                topic_tags = row.story_topic_tags
+                if isinstance(topic_tags, str):
+                    try:
+                        topic_tags = json_module.loads(topic_tags)
+                    except (json_module.JSONDecodeError, TypeError):
+                        topic_tags = []
+                topic_tags = topic_tags or []
+
+                red_flags = row.red_flags
+                if isinstance(red_flags, str):
+                    try:
+                        red_flags = json_module.loads(red_flags)
+                    except (json_module.JSONDecodeError, TypeError):
+                        red_flags = []
+                red_flags = red_flags or []
+
+                bookmarks.append({
+                    'id': row.story_id,
+                    'story_id': row.story_id,
+                    'digest_date': str(row.digest_date) if row.digest_date else None,
+                    'bookmarked_at': str(row.bookmarked_at) if row.bookmarked_at else None,
+                    'notes': row.notes,
+                    'status': row.status,
+                    'title': row.story_title,
+                    'url': row.story_url,
+                    'source': row.story_source,
+                    'category': row.story_category,
+                    'topic_tags': topic_tags,
+                    'format_tag': row.story_format_tag,
+                    'post_id': row.post_id,
+                    'author': row.author or 'unknown',
+                    'score': row.score or 0,
+                    'num_comments': row.num_comments or 0,
+                    'confidence': float(row.confidence) if row.confidence else 0.0,
+                    'red_flags': red_flags,
+                    'reasoning': row.reasoning or ''
+                })
+
+            return bookmarks
