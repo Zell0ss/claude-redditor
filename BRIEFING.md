@@ -381,5 +381,82 @@ class NewSourceScraper(BaseScraper):
 
 ---
 
+## Frequently Asked Questions
+
+### Is there a scoring system with heuristics?
+
+**Status**: Not implemented. Currently, the system relies 100% on Claude for classification.
+
+**Context**: There's been discussion about adding a pre-filter scoring system using heuristics (e.g., upvote ratio, author karma, comment quality) to reduce API costs by filtering obvious noise before sending to Claude. This would be a cost optimization strategy, not a replacement for Claude classification.
+
+**Implementation consideration**: Would require:
+- Define heuristic weights (score, comment count, time decay, source credibility)
+- Threshold tuning (what score triggers Claude classification vs. auto-reject)
+- A/B testing to validate it doesn't filter valuable content
+
+**Current recommendation**: Wait until API costs become a real problem. Current cache hit rate (70-80%) already provides significant savings. A scoring system adds complexity and risks false negatives (missing good content).
+
+---
+
+### Is reading tracking implemented?
+
+**Status**: Not implemented. No current mechanism to track which stories are actually read vs. bookmarked vs. ignored.
+
+**Context**: The idea of tracking user engagement (clicks, reading time, bookmarks) to calibrate scoring weights or improve classification would require:
+- Analytics integration in web viewer (e.g., Plausible, custom events)
+- Feedback loop: user actions → weight adjustments → better filtering
+- Privacy considerations (local-only tracking vs. external service)
+
+**Implementation consideration**: Would start from scratch. Astro web viewer is currently static (no analytics), CLI doesn't track which stories the user opens.
+
+**Current recommendation**: Add basic analytics first (which stories get clicked in web viewer) before building a full feedback loop. Could use localStorage in browser for privacy-friendly tracking.
+
+---
+
+### Where is the web viewer deployed?
+
+**Status**: Currently local only. Not deployed to public hosting.
+
+**Context**: The Astro site (`web/`) generates static files in `dist/` that could be deployed to:
+- **Cloudflare Pages** (zero cost for static sites)
+- **Netlify** (free tier, auto-deploy from Git)
+- **Vercel** (zero config for Astro)
+- **GitHub Pages** (simplest, but slower)
+
+**Current usage**: Developer runs `npm run build` and views locally at `http://localhost:4321` or deploys manually to personal hosting.
+
+**Deployment consideration**: Requires deciding on:
+- Public vs. private (authentication needed?)
+- Update frequency (rebuild on every digest? Daily cron?)
+- Custom domain or subdomain
+
+**Current recommendation**: If the newsletter is for personal use, local is sufficient. If sharing with community (e.g., "La Gaceta IA" readers), deploy to Cloudflare Pages with automatic rebuild on Git push.
+
+---
+
+### What's the current daily volume?
+
+**Status**: Approximately **50-100 posts/day** across all sources (Reddit + HackerNews) for a single project.
+
+**Breakdown by source**:
+- Reddit (RSS): ~30-50 posts/subreddit when using `--limit 50`
+- HackerNews: ~20-30 matching posts (keyword-based filtering)
+- Cache hit rate: 70-80% (posts already classified in previous scans)
+
+**API costs** (estimated):
+- New posts per day: ~20-30 (after cache)
+- Classification: 20-30 posts / 20 batch size = **~2-3 Haiku calls/day**
+- Digest generation: **1 Sonnet call/day** (for SIGNAL stories)
+- **Monthly cost**: ~$3-5 USD (mostly digest generation, classification is cheap)
+
+**Cost analysis**:
+- Current cache already provides 70-80% savings
+- Heuristic pre-filtering would save maybe 20-30% of remaining 20-30% (marginal gain)
+- Not worth the complexity unless scaling to 500+ posts/day or multiple daily scans
+
+**Current recommendation**: No need for heuristic scoring at current volume. Focus on improving classification quality (better prompts, category refinement) rather than cost optimization. If scaling to 10x volume (500-1000 posts/day), then heuristics become attractive.
+
+---
+
 *Last update: January 2026*
 *Generated from: main branch*
