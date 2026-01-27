@@ -87,7 +87,9 @@ def prefix_id(raw_id: str, source: str) -> str:
     elif source == "hackernews":
         return f"hn_{raw_id}"
     else:
-        raise ValueError(f"Unknown source: {source}")
+        # Prefix with first 6 characters of source name for unknown sources
+        # But would be better if a custom entry is used if new sources are added
+        return f"{source[:6]}_{raw_id}"
 
 
 class BaseScraper(ABC):

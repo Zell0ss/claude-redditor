@@ -66,6 +66,8 @@ class PostClassifier:
             except ValueError as e:
                 if "refusal" in str(e).lower():
                     # API refused the batch - retry with smaller batches
+                    # this happens when the content is "problematic" for the IA (non ethical hacking, smut, etc...)
+                    # We try to classify each post individually to skip the problematic one/s
                     print(f"⚠ Batch refused by API, retrying with individual posts...")
                     for post in batch:
                         try:

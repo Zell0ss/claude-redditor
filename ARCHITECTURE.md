@@ -7,6 +7,7 @@
 ## System Overview
 
 ```mermaid
+%%{ init: { "theme": "dark" } }%%
 flowchart TB
     subgraph Sources["Data Sources"]
         R[Reddit RSS/PRAW]
@@ -47,6 +48,7 @@ flowchart TB
 ## Data Flow Detail
 
 ```mermaid
+%%{ init: { "theme": "dark" } }%%
 sequenceDiagram
     participant CLI
     participant Scraper
@@ -74,6 +76,7 @@ sequenceDiagram
 ## Database Schema
 
 ```mermaid
+%%{ init: { "theme": "dark" } }%%
 erDiagram
     posts ||--o{ classifications : "1:N by project"
     posts {
