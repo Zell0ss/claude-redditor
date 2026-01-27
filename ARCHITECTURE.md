@@ -436,4 +436,52 @@ CATEGORY_CORRECTIONS = {
 
 ---
 
+## Operations & Deployment
+
+### Automated Workflow (n8n)
+
+The project runs on a fully automated scheduled workflow using n8n:
+
+**Daily pipeline**:
+```
+1. Scan Reddit sources
+   └─> ./reddit-analyzer scan all --project claudeia --limit 50
+
+2. Scan HackerNews sources
+   └─> ./reddit-analyzer scan-hn --project claudeia --limit 30
+
+3. Generate digest (markdown + JSON)
+   └─> ./reddit-analyzer digest --project claudeia
+
+4. Deploy web viewer to Cloudflare Pages
+   └─> ./scripts/deploy-web.sh
+       └─> npm run build (in web/)
+       └─> wrangler pages deploy dist/
+```
+
+**Deployment script**: `scripts/deploy-web.sh`
+- Builds Astro static site
+- Deploys to Cloudflare Pages (project: `clauderedditor-web`)
+- Requires: `CLOUDFLARE_API_TOKEN` in `.env`
+- Handles non-interactive shell environment (nvm PATH setup)
+
+**Manual execution** (when needed):
+```bash
+# Full workflow
+./reddit-analyzer scan all --include-hn --project claudeia
+./reddit-analyzer digest --project claudeia
+./scripts/deploy-web.sh
+
+# Just redeploy web viewer (if JSON files updated)
+./scripts/deploy-web.sh
+```
+
+**Server setup**:
+- Node.js 22+ via nvm
+- Python 3.11+ via pyenv
+- MariaDB for caching
+- wrangler CLI for Cloudflare deployment
+
+---
+
 *Last updated: January 2026*

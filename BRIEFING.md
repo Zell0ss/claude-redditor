@@ -415,22 +415,25 @@ class NewSourceScraper(BaseScraper):
 
 ### Where is the web viewer deployed?
 
-**Status**: Currently local only. Not deployed to public hosting.
+**Status**: ✅ **Deployed to Cloudflare Pages** - Automated via n8n workflow.
 
-**Context**: The Astro site (`web/`) generates static files in `dist/` that could be deployed to:
-- **Cloudflare Pages** (zero cost for static sites)
-- **Netlify** (free tier, auto-deploy from Git)
-- **Vercel** (zero config for Astro)
-- **GitHub Pages** (simplest, but slower)
+**Deployment details**:
+- **Platform**: Cloudflare Pages (project name: `clauderedditor-web`)
+- **Automation**: `scripts/deploy-web.sh` runs as final step in n8n scheduled workflow
+- **Trigger**: Automatically after digest generation (daily or on-demand)
+- **Process**:
+  1. n8n triggers scan commands (Reddit + HackerNews)
+  2. n8n runs digest generation (markdown + JSON)
+  3. n8n executes `scripts/deploy-web.sh`
+  4. Script builds Astro site (`npm run build`)
+  5. Script deploys to Cloudflare Pages (`wrangler pages deploy dist/`)
 
-**Current usage**: Developer runs `npm run build` and views locally at `http://localhost:4321` or deploys manually to personal hosting.
+**Requirements**:
+- `CLOUDFLARE_API_TOKEN` in `.env`
+- `wrangler` CLI (installed via npm)
+- Node.js 22+ (managed via nvm on server)
 
-**Deployment consideration**: Requires deciding on:
-- Public vs. private (authentication needed?)
-- Update frequency (rebuild on every digest? Daily cron?)
-- Custom domain or subdomain
-
-**Current recommendation**: If the newsletter is for personal use, local is sufficient. If sharing with community (e.g., "La Gaceta IA" readers), deploy to Cloudflare Pages with automatic rebuild on Git push.
+**Current workflow**: Fully automated end-to-end pipeline from content scraping to live website updates. Zero manual intervention after n8n workflow is configured.
 
 ---
 

@@ -347,24 +347,50 @@ Users with vestibular disorders or motion sensitivity won't see the animation.
 
 ## Deployment
 
-### Supported Platforms
+### Current Deployment: Cloudflare Pages
 
+**Platform**: Cloudflare Pages (project: `clauderedditor-web`)
+
+**Automation**: Fully automated via n8n workflow + deployment script
+
+**Deployment flow**:
+```
+n8n scheduled workflow
+  → scan Reddit/HN sources
+  → generate digest (markdown + JSON)
+  → ../scripts/deploy-web.sh
+     → npm run build (generates dist/)
+     → wrangler pages deploy dist/
+  → live site updated
+```
+
+**Script location**: `../scripts/deploy-web.sh`
+
+**Requirements**:
+- `CLOUDFLARE_API_TOKEN` in `.env`
+- `wrangler` CLI installed
+- Node.js 22+ (via nvm)
+
+**Manual deployment** (if needed):
+```bash
+cd /data/ClaudeRedditor/web
+npm run build
+npx wrangler pages deploy dist/ --project-name=clauderedditor-web
+```
+
+### Alternative Platforms
+
+The static site could also be deployed to:
 - **Netlify**: Drop `dist/` folder or connect to Git
 - **Vercel**: Zero-config Astro support
 - **GitHub Pages**: Push `dist/` to `gh-pages` branch
-- **Cloudflare Pages**: Connect to repo
 - **Any static host**: Upload `dist/` contents
-
-### Build Command
-
-```bash
-npm run build
-# Output: dist/ directory ready for deployment
-```
 
 ### Environment Variables
 
-**None required** - fully static build with no secrets.
+**None required for build** - fully static build with no secrets.
+
+**Deployment requires**: `CLOUDFLARE_API_TOKEN` (only needed in deployment script, not in build)
 
 ---
 

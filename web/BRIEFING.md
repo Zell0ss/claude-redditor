@@ -33,7 +33,7 @@ The site reads pre-generated JSON files from the parent project's `outputs/web/`
   - Tailwind CSS 4.1.18: Utility-first styling with custom theme
 - **Database**: None (reads static JSON files)
 - **External APIs**: None (fully static)
-- **Infrastructure**: Static files deployed anywhere (Netlify, Vercel, GitHub Pages, etc.)
+- **Infrastructure**: Cloudflare Pages (automated deployment via `../scripts/deploy-web.sh` called by n8n workflow)
 
 ---
 
