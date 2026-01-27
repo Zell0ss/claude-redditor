@@ -1,43 +1,46 @@
-# Astro Starter Kit: Minimal
+# Claude Gazette
 
-```sh
-npm create astro@latest -- --template minimal
+AI-curated content digests from Reddit and Hacker News with personality and visual flair.
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## What it does
 
-## 🚀 Project Structure
+- Displays AI-curated digest stories in a futuristic dark blue interface
+- Shows Claude's personality through 12 expressions matched to content sentiment
+- Features autonomous boids flocking animation background
+- Provides bookmark management with status tracking
+- Responsive design with Windows-style UI elements
 
-Inside of your Astro project, you'll see the following folders and files:
+## Documentation
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
-```
+- 📖 [Architecture](ARCHITECTURE.md) - Design decisions and technical details
+- 🚀 [Quick Start](QUICKSTART.md) - Complete setup tutorial
+- 🤖 [Briefing](BRIEFING.md) - Context for Claude AI
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Requirements
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+- Node.js 18+
+- npm or pnpm
+- Astro v5.16.11+
+- JSON digest files in `../outputs/web/`
 
-Any static assets, like images, can be placed in the `public/` directory.
+## Theme
 
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+**Claude Gazette** features a custom dark blue futuristic theme:
+- Navy backgrounds (#0a1929, #0d1b2a) with cyan accents (#00d4ff)
+- Autonomous swarm animation using boids flocking algorithm
+- 12 Claude expressions (confidence-based) reflecting story sentiment
+- Windows-style SVG buttons for navigation
+- Inter font for clean, modern typography

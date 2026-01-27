@@ -1,23 +1,88 @@
 @import "tailwindcss";
 
-/* Custom color scheme for tags */
+/* Claude Gazette Dark Blue Theme */
 @theme {
-  /* Topic tag colors */
-  --color-tag-blue: #3b82f6;
-  --color-tag-green: #22c55e;
-  --color-tag-purple: #a855f7;
-  --color-tag-orange: #f97316;
-  --color-tag-pink: #ec4899;
-  --color-tag-cyan: #06b6d4;
+  /* Navy Backgrounds */
+  --color-navy-900: #0a1929;
+  --color-navy-800: #0d1b2a;
+  --color-navy-700: #1a2332;
+  --color-navy-600: #253140;
+
+  /* Cyan Accents */
+  --color-cyan-400: #00d4ff;
+  --color-cyan-500: #00ffff;
+  --color-cyan-600: #00a8cc;
+  --color-cyan-700: #007a99;
+
+  /* Text Colors */
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #cbd5e1;
+  --color-text-tertiary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  /* Category Colors - Dark Theme Adapted */
+  /* SIGNAL categories - bright, positive */
+  --color-category-technical: #60a5fa;
+  --color-category-troubleshooting: #34d399;
+  --color-category-research-verified: #a78bfa;
+
+  /* NOISE categories - warning tones */
+  --color-category-mystical: #f472b6;
+  --color-category-unverified-claim: #fb923c;
+  --color-category-engagement-bait: #f87171;
+
+  /* META categories - neutral */
+  --color-category-community: #94a3b8;
+  --color-category-meme: #fbbf24;
+
+  /* OTHER */
+  --color-category-outlier: #6b7280;
+
+  /* UNRELATED */
+  --color-category-unrelated: #4b5563;
+
+  /* Topic Tag Colors - Bright versions for dark theme */
+  --color-tag-blue: #60a5fa;
+  --color-tag-green: #34d399;
+  --color-tag-purple: #a78bfa;
+  --color-tag-orange: #fb923c;
+  --color-tag-pink: #f472b6;
+  --color-tag-cyan: #22d3ee;
 
   /* Format tag colors */
-  --color-format-gray: #6b7280;
+  --color-format-gray: #94a3b8;
+}
 
-  /* Category colors */
-  --color-category-technical: #3b82f6;
-  --color-category-industry: #8b5cf6;
-  --color-category-tutorial: #22c55e;
-  --color-category-discussion: #f59e0b;
-  --color-category-news: #ef4444;
-  --color-category-meta: #6b7280;
+/* Custom Utility Classes */
+.glow-cyan-hover {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.glow-cyan-hover:hover {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.card-elevated {
+  background-color: var(--color-navy-800);
+  border: 1px solid var(--color-navy-600);
+  transition: all 0.3s ease;
+}
+
+.card-elevated:hover {
+  background-color: var(--color-navy-700);
+  border-color: var(--color-cyan-600);
+  box-shadow: 0 10px 15px -3px rgba(0, 212, 255, 0.2);
+}
+
+/* Smooth transitions globally */
+* {
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Focus states for accessibility */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-cyan-400);
+  outline-offset: 2px;
 }

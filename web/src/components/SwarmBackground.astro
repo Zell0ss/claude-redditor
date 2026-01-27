@@ -1,0 +1,326 @@
+---
+// Swarm Background - Boids Flocking Animation
+// No server-side logic needed
+---
+
+<canvas id="swarm-bg" class="fixed inset-0 -z-10 pointer-events-none"></canvas>
+
+<script>
+  // Configuration
+  const CONFIG = {
+    boidCount: 50,
+    maxSpeed: 1.8,
+    maxForce: 0.03,
+    separationRadius: 25,
+    alignmentRadius: 50,
+    cohesionRadius: 50,
+    separationWeight: 1.5,
+    alignmentWeight: 1.0,
+    cohesionWeight: 1.0,
+    particleRadius: 3,
+    showConnections: true,
+  };
+
+  // Boid class implementing Reynolds' three rules
+  class Boid {
+    constructor(x, y) {
+      this.position = { x, y };
+      this.velocity = {
+        x: (Math.random() - 0.5) * 2,
+        y: (Math.random() - 0.5) * 2,
+      };
+      this.acceleration = { x: 0, y: 0 };
+    }
+
+    // Apply force to acceleration
+    applyForce(force) {
+      this.acceleration.x += force.x;
+      this.acceleration.y += force.y;
+    }
+
+    // Update position based on velocity and acceleration
+    update() {
+      this.velocity.x += this.acceleration.x;
+      this.velocity.y += this.acceleration.y;
+
+      // Limit speed
+      const speed = Math.sqrt(
+        this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y
+      );
+      if (speed > CONFIG.maxSpeed) {
+        this.velocity.x = (this.velocity.x / speed) * CONFIG.maxSpeed;
+        this.velocity.y = (this.velocity.y / speed) * CONFIG.maxSpeed;
+      }
+
+      this.position.x += this.velocity.x;
+      this.position.y += this.velocity.y;
+
+      // Reset acceleration
+      this.acceleration.x = 0;
+      this.acceleration.y = 0;
+    }
+
+    // Wrap around screen edges
+    edges(width, height) {
+      if (this.position.x > width) this.position.x = 0;
+      if (this.position.x < 0) this.position.x = width;
+      if (this.position.y > height) this.position.y = 0;
+      if (this.position.y < 0) this.position.y = height;
+    }
+
+    // Rule 1: Separation - avoid crowding neighbors
+    separate(boids) {
+      let steer = { x: 0, y: 0 };
+      let count = 0;
+
+      for (const other of boids) {
+        const dx = this.position.x - other.position.x;
+        const dy = this.position.y - other.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0 && dist < CONFIG.separationRadius) {
+          steer.x += dx / dist; // Weight by distance
+          steer.y += dy / dist;
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        steer.x /= count;
+        steer.y /= count;
+
+        // Normalize and scale
+        const mag = Math.sqrt(steer.x * steer.x + steer.y * steer.y);
+        if (mag > 0) {
+          steer.x = (steer.x / mag) * CONFIG.maxSpeed - this.velocity.x;
+          steer.y = (steer.y / mag) * CONFIG.maxSpeed - this.velocity.y;
+
+          // Limit force
+          const forceMag = Math.sqrt(steer.x * steer.x + steer.y * steer.y);
+          if (forceMag > CONFIG.maxForce) {
+            steer.x = (steer.x / forceMag) * CONFIG.maxForce;
+            steer.y = (steer.y / forceMag) * CONFIG.maxForce;
+          }
+        }
+      }
+
+      return steer;
+    }
+
+    // Rule 2: Alignment - steer towards average heading of neighbors
+    align(boids) {
+      let avg = { x: 0, y: 0 };
+      let count = 0;
+
+      for (const other of boids) {
+        const dx = this.position.x - other.position.x;
+        const dy = this.position.y - other.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0 && dist < CONFIG.alignmentRadius) {
+          avg.x += other.velocity.x;
+          avg.y += other.velocity.y;
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        avg.x /= count;
+        avg.y /= count;
+
+        // Calculate steering
+        let steer = {
+          x: avg.x - this.velocity.x,
+          y: avg.y - this.velocity.y,
+        };
+
+        // Limit force
+        const mag = Math.sqrt(steer.x * steer.x + steer.y * steer.y);
+        if (mag > CONFIG.maxForce) {
+          steer.x = (steer.x / mag) * CONFIG.maxForce;
+          steer.y = (steer.y / mag) * CONFIG.maxForce;
+        }
+
+        return steer;
+      }
+
+      return { x: 0, y: 0 };
+    }
+
+    // Rule 3: Cohesion - steer towards average position of neighbors
+    cohesion(boids) {
+      let avg = { x: 0, y: 0 };
+      let count = 0;
+
+      for (const other of boids) {
+        const dx = this.position.x - other.position.x;
+        const dy = this.position.y - other.position.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > 0 && dist < CONFIG.cohesionRadius) {
+          avg.x += other.position.x;
+          avg.y += other.position.y;
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        avg.x /= count;
+        avg.y /= count;
+
+        // Seek towards average position
+        const desired = {
+          x: avg.x - this.position.x,
+          y: avg.y - this.position.y,
+        };
+
+        const mag = Math.sqrt(desired.x * desired.x + desired.y * desired.y);
+        if (mag > 0) {
+          desired.x = (desired.x / mag) * CONFIG.maxSpeed;
+          desired.y = (desired.y / mag) * CONFIG.maxSpeed;
+        }
+
+        let steer = {
+          x: desired.x - this.velocity.x,
+          y: desired.y - this.velocity.y,
+        };
+
+        // Limit force
+        const steerMag = Math.sqrt(steer.x * steer.x + steer.y * steer.y);
+        if (steerMag > CONFIG.maxForce) {
+          steer.x = (steer.x / steerMag) * CONFIG.maxForce;
+          steer.y = (steer.y / steerMag) * CONFIG.maxForce;
+        }
+
+        return steer;
+      }
+
+      return { x: 0, y: 0 };
+    }
+
+    // Apply all three flocking rules
+    flock(boids) {
+      const sep = this.separate(boids);
+      const ali = this.align(boids);
+      const coh = this.cohesion(boids);
+
+      // Weight the forces
+      sep.x *= CONFIG.separationWeight;
+      sep.y *= CONFIG.separationWeight;
+      ali.x *= CONFIG.alignmentWeight;
+      ali.y *= CONFIG.alignmentWeight;
+      coh.x *= CONFIG.cohesionWeight;
+      coh.y *= CONFIG.cohesionWeight;
+
+      // Apply forces
+      this.applyForce(sep);
+      this.applyForce(ali);
+      this.applyForce(coh);
+    }
+
+    // Render boid with gradient
+    render(ctx) {
+      const gradient = ctx.createRadialGradient(
+        this.position.x,
+        this.position.y,
+        0,
+        this.position.x,
+        this.position.y,
+        CONFIG.particleRadius + 1
+      );
+      gradient.addColorStop(0, 'rgba(0, 212, 255, 0.8)');
+      gradient.addColorStop(1, 'rgba(0, 212, 255, 0.1)');
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(
+        this.position.x,
+        this.position.y,
+        CONFIG.particleRadius,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+  }
+
+  // Initialize canvas and boids
+  const canvas = document.getElementById('swarm-bg') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+
+  // Set canvas size
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // Create boids
+  const boids: Boid[] = [];
+  for (let i = 0; i < CONFIG.boidCount; i++) {
+    boids.push(
+      new Boid(
+        Math.random() * canvas.width,
+        Math.random() * canvas.height
+      )
+    );
+  }
+
+  // Animation loop
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Optional: Draw connections between nearby boids
+    if (CONFIG.showConnections) {
+      ctx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
+      ctx.lineWidth = 1;
+
+      for (let i = 0; i < boids.length; i++) {
+        for (let j = i + 1; j < boids.length; j++) {
+          const dx = boids[i].position.x - boids[j].position.x;
+          const dy = boids[i].position.y - boids[j].position.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 80) {
+            const opacity = 1 - dist / 80;
+            ctx.strokeStyle = `rgba(100, 212, 255, ${opacity * 0.1})`;
+            ctx.beginPath();
+            ctx.moveTo(boids[i].position.x, boids[i].position.y);
+            ctx.lineTo(boids[j].position.x, boids[j].position.y);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // Update and render boids
+    for (const boid of boids) {
+      boid.flock(boids);
+      boid.update();
+      boid.edges(canvas.width, canvas.height);
+      boid.render(ctx);
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // Start animation
+  animate();
+</script>
+
+<style>
+  #swarm-bg {
+    width: 100vw;
+    height: 100vh;
+    opacity: 0.20;
+  }
+
+  /* Respect user's motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    #swarm-bg {
+      display: none;
+    }
+  }
+</style>

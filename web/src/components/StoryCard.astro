@@ -16,78 +16,117 @@ const getSourceIcon = (source: string): string => {
   return '📰';
 };
 
+// Get Claude expression based on category and confidence
+const getClaudeExpression = (category: string, confidence: number): string => {
+  const expressionMap: Record<string, number[]> = {
+    // SIGNAL categories - positive expressions
+    'technical': [1, 12, 5],
+    'troubleshooting': [8, 2, 12],
+    'research_verified': [11, 1, 12],
+    // NOISE categories - skeptical/critical
+    'mystical': [3, 9, 6],
+    'unverified_claim': [3, 9, 4],
+    'engagement_bait': [6, 3, 9],
+    // META categories - neutral/playful
+    'community': [5, 2, 12],
+    'meme': [1, 12, 7],
+    // OTHER
+    'outlier': [4, 10, 7],
+    // UNRELATED
+    'unrelated': [6, 3, 9],
+  };
+
+  const expressions = expressionMap[category.toLowerCase()] || [5];
+
+  // High confidence: strongest emotion, Medium: moderate, Low: uncertain
+  const index = confidence >= 0.9 ? 0 : confidence >= 0.7 ? 1 : expressions[2] ? 2 : 1;
+  return `/claude/${expressions[index]}.png`;
+};
+
 const sourceIcon = getSourceIcon(story.source);
+const claudeExpression = getClaudeExpression(story.category, story.confidence);
 ---
 
-<article class="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
-  <header class="mb-3">
-    <a
-      href={`/story/${story.id}`}
-      class="text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors line-clamp-2"
-    >
-      {story.title}
-    </a>
+<article class="bg-navy-800 rounded-lg border border-navy-600 p-4 hover:border-cyan-600 hover:shadow-[0_0_20px_rgba(0,212,255,0.3)] transition-all">
+  <div class="flex items-start gap-3">
+    <!-- Claude expression -->
+    <img
+      src={claudeExpression}
+      alt="Claude's reaction"
+      class="w-10 h-10 rounded-full flex-shrink-0"
+    />
 
-    <div class="flex items-center gap-3 mt-2 text-sm text-gray-500">
-      <span class="flex items-center gap-1">
-        <span>{sourceIcon}</span>
-        <span>{story.source}</span>
-      </span>
-      <span>by {story.author}</span>
-      {story.score > 0 && (
-        <span class="flex items-center gap-1">
-          <span>▲</span>
-          <span>{story.score}</span>
-        </span>
+    <div class="flex-1 min-w-0">
+      <header class="mb-3">
+        <a
+          href={`/story/${story.id}`}
+          class="text-lg font-semibold text-slate-100 hover:text-cyan-400 transition-colors line-clamp-2 block"
+        >
+          {story.title}
+        </a>
+
+        <div class="flex items-center gap-3 mt-2 text-sm text-slate-400">
+          <span class="flex items-center gap-1">
+            <span>{sourceIcon}</span>
+            <span>{story.source}</span>
+          </span>
+          <span>by {story.author}</span>
+          {story.score > 0 && (
+            <span class="flex items-center gap-1">
+              <span>▲</span>
+              <span>{story.score}</span>
+            </span>
+          )}
+          {story.num_comments > 0 && (
+            <span class="flex items-center gap-1">
+              <span>💬</span>
+              <span>{story.num_comments}</span>
+            </span>
+          )}
+        </div>
+      </header>
+
+      <div class="flex flex-wrap gap-2 mb-3">
+        <TagBadge tag={story.category} type="category" />
+
+        {story.topic_tags.map((tag) => (
+          <TagBadge tag={tag} type="topic" />
+        ))}
+
+        {story.format_tag && (
+          <TagBadge tag={story.format_tag} type="format" />
+        )}
+      </div>
+
+      {story.red_flags.length > 0 && (
+        <div class="flex flex-wrap gap-1 mb-3">
+          {story.red_flags.map((flag) => (
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/50">
+              ⚠️ {flag}
+            </span>
+          ))}
+        </div>
       )}
-      {story.num_comments > 0 && (
-        <span class="flex items-center gap-1">
-          <span>💬</span>
-          <span>{story.num_comments}</span>
-        </span>
+
+      {showReasoning && story.reasoning && (
+        <p class="text-sm text-slate-400 mt-3 pt-3 border-t border-navy-600">
+          {story.reasoning}
+        </p>
       )}
+
+      <footer class="mt-3 flex items-center justify-between text-xs text-slate-500">
+        <span class="font-mono">{story.id}</span>
+        <span class="flex items-center gap-1">
+          <span>Confidence:</span>
+          <span class:list={[
+            'font-medium',
+            story.confidence >= 0.9 ? 'text-emerald-400' :
+            story.confidence >= 0.7 ? 'text-amber-400' : 'text-red-400'
+          ]}>
+            {Math.round(story.confidence * 100)}%
+          </span>
+        </span>
+      </footer>
     </div>
-  </header>
-
-  <div class="flex flex-wrap gap-2 mb-3">
-    <TagBadge tag={story.category} type="category" />
-
-    {story.topic_tags.map((tag) => (
-      <TagBadge tag={tag} type="topic" />
-    ))}
-
-    {story.format_tag && (
-      <TagBadge tag={story.format_tag} type="format" />
-    )}
   </div>
-
-  {story.red_flags.length > 0 && (
-    <div class="flex flex-wrap gap-1 mb-3">
-      {story.red_flags.map((flag) => (
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">
-          ⚠️ {flag}
-        </span>
-      ))}
-    </div>
-  )}
-
-  {showReasoning && story.reasoning && (
-    <p class="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100">
-      {story.reasoning}
-    </p>
-  )}
-
-  <footer class="mt-3 flex items-center justify-between text-xs text-gray-400">
-    <span>ID: {story.id}</span>
-    <span class="flex items-center gap-1">
-      <span>Confidence:</span>
-      <span class:list={[
-        'font-medium',
-        story.confidence >= 0.9 ? 'text-green-600' :
-        story.confidence >= 0.7 ? 'text-amber-600' : 'text-red-600'
-      ]}>
-        {Math.round(story.confidence * 100)}%
-      </span>
-    </span>
-  </footer>
 </article>

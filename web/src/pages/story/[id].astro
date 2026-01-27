@@ -43,7 +43,35 @@ const getSourceIcon = (source: string): string => {
   return '📰';
 };
 
+// Get Claude expression based on category and confidence
+const getClaudeExpression = (category: string, confidence: number): string => {
+  const expressionMap: Record<string, number[]> = {
+    // SIGNAL categories - positive expressions
+    'technical': [1, 12, 5],
+    'troubleshooting': [8, 2, 12],
+    'research_verified': [11, 1, 12],
+    // NOISE categories - skeptical/critical
+    'mystical': [3, 9, 6],
+    'unverified_claim': [3, 9, 4],
+    'engagement_bait': [6, 3, 9],
+    // META categories - neutral/playful
+    'community': [5, 2, 12],
+    'meme': [1, 12, 7],
+    // OTHER
+    'outlier': [4, 10, 7],
+    // UNRELATED
+    'unrelated': [6, 3, 9],
+  };
+
+  const expressions = expressionMap[category.toLowerCase()] || [5];
+
+  // High confidence: strongest emotion, Medium: moderate, Low: uncertain
+  const index = confidence >= 0.9 ? 0 : confidence >= 0.7 ? 1 : expressions[2] ? 2 : 1;
+  return `/claude/${expressions[index]}.png`;
+};
+
 const sourceIcon = getSourceIcon(story.source);
+const claudeExpression = getClaudeExpression(story.category, story.confidence);
 
 const formatDate = (dateStr: string): string => {
   const date = new Date(dateStr);
@@ -58,20 +86,43 @@ const formatDate = (dateStr: string): string => {
 
 <Layout title={story.article_title || story.title}>
   <div class="mb-6">
-    <a href={`/digest/${digestFilename}`} class="text-blue-600 hover:underline text-sm inline-flex items-center gap-1">
-      <span>←</span>
+    <a href={`/digest/${digestFilename}`} class="text-cyan-400 hover:text-cyan-300 text-sm inline-flex items-center gap-2 transition-colors group">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="transition-transform group-hover:scale-110">
+        <rect x="0.5" y="0.5" width="15" height="15" stroke="currentColor" stroke-width="1.5" rx="2"/>
+        <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
       <span>Back to {formatDate(digest.generated_at)}</span>
     </a>
   </div>
 
-  <article class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+  <!-- Claude's Take Section -->
+  {story.reasoning && (
+    <div class="mb-6 flex items-start gap-4 bg-navy-700 rounded-lg p-6 border border-cyan-600/30">
+      <img
+        src={claudeExpression}
+        alt="Claude's reaction"
+        class="w-20 h-20 rounded-full flex-shrink-0"
+      />
+      <div class="flex-1">
+        <h2 class="text-lg font-semibold text-cyan-400 mb-2 flex items-center gap-2">
+          <span>💭</span>
+          <span>Claude's Take</span>
+        </h2>
+        <p class="text-slate-300 leading-relaxed">
+          {story.reasoning}
+        </p>
+      </div>
+    </div>
+  )}
+
+  <article class="bg-navy-800 rounded-lg border border-navy-600 overflow-hidden">
     <!-- Header -->
-    <header class="p-6 border-b border-gray-100">
-      <h1 class="text-2xl font-bold text-gray-900 mb-4">
+    <header class="p-6 border-b border-navy-600">
+      <h1 class="text-2xl font-bold text-slate-100 mb-4">
         {story.article_title || story.title}
       </h1>
 
-      <div class="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
+      <div class="flex flex-wrap items-center gap-3 text-sm text-slate-400 mb-4">
         <span class="flex items-center gap-1">
           <span>{sourceIcon}</span>
           <span>{story.source}</span>
@@ -106,7 +157,7 @@ const formatDate = (dateStr: string): string => {
       {story.red_flags.length > 0 && (
         <div class="flex flex-wrap gap-1 mb-4">
           {story.red_flags.map((flag) => (
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/50">
               ⚠️ {flag}
             </span>
           ))}
@@ -118,7 +169,7 @@ const formatDate = (dateStr: string): string => {
         href={story.url}
         target="_blank"
         rel="noopener noreferrer"
-        class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium"
+        class="inline-flex items-center gap-1 text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors"
       >
         <span>View Original Post</span>
         <span>↗</span>
@@ -128,54 +179,54 @@ const formatDate = (dateStr: string): string => {
     <!-- Article Content -->
     <div class="p-6">
       {story.article_body ? (
-        <div class="prose prose-gray max-w-none">
-          <div class="text-gray-800 leading-relaxed whitespace-pre-wrap">
+        <div class="prose prose-invert max-w-none">
+          <div class="text-slate-300 leading-relaxed whitespace-pre-wrap">
             {story.article_body}
           </div>
         </div>
       ) : (
         <div class="text-center py-8">
-          <p class="text-gray-500 mb-2">No analysis available for this story.</p>
-          <p class="text-sm text-gray-400">This story was indexed before article generation was enabled.</p>
+          <p class="text-slate-400 mb-2">No analysis available for this story.</p>
+          <p class="text-sm text-slate-500">This story was indexed before article generation was enabled.</p>
         </div>
       )}
     </div>
 
     <!-- Radio Commentary -->
     {story.radio_commentary && (
-      <div class="p-6 bg-gray-50 border-t border-gray-100">
-        <h2 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+      <div class="p-6 bg-navy-700 border-t border-navy-600">
+        <h2 class="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
           <span>🎙️</span>
           <span>Quick Summary</span>
         </h2>
-        <p class="text-gray-600 text-sm italic">
+        <p class="text-slate-400 text-sm italic">
           {story.radio_commentary}
         </p>
       </div>
     )}
 
-    <!-- Classification Reasoning -->
+    <!-- Classification Details -->
     {story.reasoning && (
-      <div class="p-6 bg-blue-50 border-t border-blue-100">
-        <h2 class="text-sm font-semibold text-blue-700 mb-2 flex items-center gap-2">
+      <div class="p-6 bg-cyan-500/10 border-t border-cyan-500/30">
+        <h2 class="text-sm font-semibold text-cyan-300 mb-2 flex items-center gap-2">
           <span>🤖</span>
-          <span>Why this was marked as Signal</span>
+          <span>Classification Details</span>
         </h2>
-        <p class="text-blue-800 text-sm">
+        <p class="text-cyan-200 text-sm">
           {story.reasoning}
         </p>
       </div>
     )}
 
     <!-- Footer -->
-    <footer class="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-      <span>Story ID: {story.id}</span>
+    <footer class="p-4 bg-navy-700 border-t border-navy-600 flex items-center justify-between text-xs text-slate-500">
+      <span class="font-mono">{story.id}</span>
       <span class="flex items-center gap-1">
         <span>Confidence:</span>
         <span class:list={[
           'font-medium',
-          story.confidence >= 0.9 ? 'text-green-600' :
-          story.confidence >= 0.7 ? 'text-amber-600' : 'text-red-600'
+          story.confidence >= 0.9 ? 'text-emerald-400' :
+          story.confidence >= 0.7 ? 'text-amber-400' : 'text-red-400'
         ]}>
           {Math.round(story.confidence * 100)}%
         </span>

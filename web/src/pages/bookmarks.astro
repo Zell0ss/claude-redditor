@@ -55,45 +55,49 @@ const formatDate = (dateStr: string): string => {
 };
 ---
 
-<Layout title="Bookmarks - Digest Viewer">
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900 mb-2">Bookmarks</h1>
-    <p class="text-gray-600">Your saved stories for later reference</p>
+<Layout title="Bookmarks - Claude Gazette">
+  <!-- Hero Section -->
+  <div class="mb-8 flex items-center gap-6">
+    <img src="/claude/5.png" alt="Claude mascot" class="w-20 h-20" />
+    <div>
+      <h1 class="text-3xl font-bold text-slate-100 mb-2">Bookmarks</h1>
+      <p class="text-slate-300">Your saved stories for later reference</p>
+    </div>
   </div>
 
   {!bookmarksData ? (
-    <div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
-      <p class="text-gray-500 mb-2">No bookmarks file found.</p>
-      <p class="text-sm text-gray-400">
-        Run <code class="bg-gray-100 px-1 rounded">./reddit-analyzer bookmark export</code> to generate it.
+    <div class="bg-navy-800 rounded-lg border border-navy-600 p-8 text-center">
+      <p class="text-slate-400 mb-2">No bookmarks file found.</p>
+      <p class="text-sm text-slate-500">
+        Run <code class="bg-navy-700 px-2 py-1 rounded text-cyan-400">./reddit-analyzer bookmark export</code> to generate it.
       </p>
     </div>
   ) : bookmarksData.bookmarks.length === 0 ? (
-    <div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
-      <p class="text-gray-500">No bookmarks yet.</p>
-      <p class="text-sm text-gray-400 mt-2">
-        Use <code class="bg-gray-100 px-1 rounded">./reddit-analyzer bookmark add &lt;story_id&gt;</code> to save stories.
+    <div class="bg-navy-800 rounded-lg border border-navy-600 p-8 text-center">
+      <p class="text-slate-400">No bookmarks yet.</p>
+      <p class="text-sm text-slate-500 mt-2">
+        Use <code class="bg-navy-700 px-2 py-1 rounded text-cyan-400">./reddit-analyzer bookmark add &lt;story_id&gt;</code> to save stories.
       </p>
     </div>
   ) : (
     <div class="space-y-8">
       <!-- Stats bar -->
-      <div class="flex items-center justify-between bg-white rounded-lg border border-gray-200 p-4">
+      <div class="flex items-center justify-between bg-navy-800 rounded-lg border border-navy-600 p-4">
         <div class="flex items-center gap-6 text-sm">
           <span class="flex items-center gap-2">
             <span class="w-3 h-3 rounded-full bg-blue-500"></span>
-            <span class="text-gray-600">To Read: <span class="font-medium">{byStatus.to_read.length}</span></span>
+            <span class="text-slate-300">To Read: <span class="font-medium text-cyan-400">{byStatus.to_read.length}</span></span>
           </span>
           <span class="flex items-center gap-2">
             <span class="w-3 h-3 rounded-full bg-amber-500"></span>
-            <span class="text-gray-600">To Implement: <span class="font-medium">{byStatus.to_implement.length}</span></span>
+            <span class="text-slate-300">To Implement: <span class="font-medium text-cyan-400">{byStatus.to_implement.length}</span></span>
           </span>
           <span class="flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-green-500"></span>
-            <span class="text-gray-600">Done: <span class="font-medium">{byStatus.done.length}</span></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+            <span class="text-slate-300">Done: <span class="font-medium text-cyan-400">{byStatus.done.length}</span></span>
           </span>
         </div>
-        <div class="text-xs text-gray-400">
+        <div class="text-xs text-slate-500">
           Updated: {formatDate(bookmarksData.exported_at)}
         </div>
       </div>
@@ -101,7 +105,7 @@ const formatDate = (dateStr: string): string => {
       <!-- To Read Section -->
       {byStatus.to_read.length > 0 && (
         <section>
-          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h2 class="text-xl font-semibold text-slate-100 mb-4 flex items-center gap-2">
             <span class="w-3 h-3 rounded-full bg-blue-500"></span>
             To Read ({byStatus.to_read.length})
           </h2>
@@ -119,7 +123,7 @@ const formatDate = (dateStr: string): string => {
       <!-- To Implement Section -->
       {byStatus.to_implement.length > 0 && (
         <section>
-          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <h2 class="text-xl font-semibold text-slate-100 mb-4 flex items-center gap-2">
             <span class="w-3 h-3 rounded-full bg-amber-500"></span>
             To Implement ({byStatus.to_implement.length})
           </h2>
@@ -137,8 +141,8 @@ const formatDate = (dateStr: string): string => {
       <!-- Done Section -->
       {byStatus.done.length > 0 && (
         <section>
-          <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+          <h2 class="text-xl font-semibold text-slate-100 mb-4 flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
             Done ({byStatus.done.length})
           </h2>
           <div class="space-y-4">

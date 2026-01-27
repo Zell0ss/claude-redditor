@@ -50,29 +50,42 @@ const formatTime = (dateStr: string): string => {
 
 <Layout title={digest ? `Digest - ${formatDate(digest.generated_at)}` : 'Digest Not Found'}>
   {!digest ? (
-    <div class="bg-white rounded-lg border border-gray-200 p-8 text-center">
-      <p class="text-gray-500 text-lg">Digest not found</p>
-      <a href="/" class="text-blue-600 hover:underline mt-4 inline-block">
-        ← Back to all digests
+    <div class="bg-navy-800 rounded-lg border border-navy-600 p-8 text-center">
+      <p class="text-slate-400 text-lg">Digest not found</p>
+      <a href="/" class="text-cyan-400 hover:text-cyan-300 mt-4 inline-flex items-center gap-2 transition-colors group">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="transition-transform group-hover:scale-110">
+          <rect x="0.5" y="0.5" width="15" height="15" stroke="currentColor" stroke-width="1.5" rx="2"/>
+          <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Back to all digests</span>
       </a>
     </div>
   ) : (
     <>
       <div class="mb-8">
-        <a href="/" class="text-blue-600 hover:underline text-sm mb-4 inline-block">
-          ← Back to all digests
+        <a href="/" class="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 text-sm mb-4 transition-colors group">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="transition-transform group-hover:scale-110">
+            <rect x="0.5" y="0.5" width="15" height="15" stroke="currentColor" stroke-width="1.5" rx="2"/>
+            <path d="M4.5 4.5L11.5 11.5M11.5 4.5L4.5 11.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>Back to all digests</span>
         </a>
 
-        <h1 class="text-3xl font-bold text-gray-900 mb-2">
-          {formatDate(digest.generated_at)}
-        </h1>
+        <div class="flex items-center gap-4 mb-4">
+          <img src="/claude/1.png" alt="Claude" class="w-16 h-16" />
+          <div>
+            <h1 class="text-3xl font-bold text-slate-100 mb-2">
+              {formatDate(digest.generated_at)}
+            </h1>
 
-        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-          <span>Project: <span class="font-medium text-gray-700">{digest.project}</span></span>
-          <span>Generated at {formatTime(digest.generated_at)}</span>
-          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-            {digest.story_count} stories
-          </span>
+            <div class="flex flex-wrap items-center gap-4 text-sm text-slate-400">
+              <span>Project: <span class="font-medium text-cyan-400">{digest.project}</span></span>
+              <span>Generated at {formatTime(digest.generated_at)}</span>
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/50">
+                {digest.story_count} stories
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
