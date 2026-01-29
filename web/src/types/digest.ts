@@ -13,6 +13,20 @@ export interface Story {
   format_tag: string | null;
   red_flags: string[];
   reasoning: string;
+  // Multi-tier tagging system (9 tiers + scoring + clusters)
+  tier_tags?: {
+    tier1?: string[];
+    tier2?: string[];
+    tier3?: string[];
+    tier4?: string[];
+    tier5?: string[];
+    tier6?: string[];
+    tier7?: string[];
+    tier8?: string[];
+    tier9?: string[];
+  } | null;
+  tier_clusters?: string[];
+  tier_scoring?: number | null;
   // Article content (from Claude digest generation)
   article_title: string | null;
   article_body: string | null;
@@ -52,6 +66,20 @@ export interface Bookmark {
   category: string;
   topic_tags: string[];
   format_tag: string | null;
+  // Multi-tier tagging system (denormalized from source story)
+  tier_tags?: {
+    tier1?: string[];
+    tier2?: string[];
+    tier3?: string[];
+    tier4?: string[];
+    tier5?: string[];
+    tier6?: string[];
+    tier7?: string[];
+    tier8?: string[];
+    tier9?: string[];
+  } | null;
+  tier_clusters?: string[];
+  tier_scoring?: number | null;
   post_id: string | null;
   author: string;
   score: number;

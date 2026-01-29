@@ -42,7 +42,7 @@ class PostClassifier:
 
     def classify_posts(self, posts: List[RedditPost], batch_size: int = None, project: str = 'default') -> List[Classification]:
         """
-        Classify a list of posts using Claude API.
+        Classify a list of posts using Claude API (two-pass classification).
 
         Args:
             posts: List of RedditPost objects to classify
@@ -50,14 +50,14 @@ class PostClassifier:
             project: Project name (default: 'default')
 
         Returns:
-            List of Classification objects
+            List of Classification objects with tier data
         """
         if batch_size is None:
             batch_size = settings.default_batch_size
 
         all_classifications = []
 
-        # Process in batches
+        # STEP 1: Process category classifications in batches
         for i in range(0, len(posts), batch_size):
             batch = posts[i : i + batch_size]
             try:
@@ -80,6 +80,52 @@ class PostClassifier:
                                 raise
                 else:
                     raise
+
+        # STEP 2: Tier classification (only for non-UNRELATED posts)
+        # Check if project has tagging.md prompt (tier system is optional)
+        try:
+            self._get_tier_prompt_template(project)
+            has_tier_system = True
+        except FileNotFoundError:
+            has_tier_system = False
+            print(f"ℹ No tier tagging system found for project '{project}' (tagging.md missing)")
+
+        if has_tier_system:
+            # Filter posts eligible for tier classification
+            tier_eligible_posts = []
+            for post, cls in zip(posts, all_classifications):
+                if cls.category != CategoryEnum.UNRELATED:
+                    tier_eligible_posts.append(post)
+
+            if tier_eligible_posts:
+                print(f"🏷️  Starting tier classification for {len(tier_eligible_posts)} posts...")
+
+                # Process tiers in batches
+                for i in range(0, len(tier_eligible_posts), batch_size):
+                    batch = tier_eligible_posts[i : i + batch_size]
+                    try:
+                        tier_results = self._classify_tiers_batch(batch, project=project)
+
+                        # Merge tier data into classifications
+                        tier_map = {t['post_id']: t for t in tier_results}
+                        merged_count = 0
+                        for cls in all_classifications:
+                            if cls.post_id in tier_map:
+                                tier_data = tier_map[cls.post_id]
+                                cls.tier_tags = tier_data.get('tier_tags')
+                                cls.tier_clusters = tier_data.get('clusters', [])
+                                cls.tier_scoring = tier_data.get('scoring')
+                                merged_count += 1
+
+                        print(f"  📌 Merged tier data for {merged_count}/{len(tier_results)} posts")
+
+                    except Exception as e:
+                        print(f"⚠ Warning: Tier classification failed for batch: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continue without tier data for this batch
+
+                print(f"✓ Tier classification complete")
 
         return all_classifications
 
@@ -169,6 +215,89 @@ class PostClassifier:
 
         except Exception as e:
             print(f"✗ Error calling Claude API: {e}")
+            raise
+
+    def _get_tier_prompt_template(self, project: str) -> str:
+        """
+        Get the tier classification prompt template for a project.
+
+        Args:
+            project: Project name
+
+        Returns:
+            Tier prompt template string
+
+        Raises:
+            FileNotFoundError: If tagging.md doesn't exist for project
+        """
+        try:
+            return project_loader.get_prompt(project, 'tagging')
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Tier tagging prompt not found for project '{project}'. "
+                f"Create prompts/tagging.md in the project directory based on PROMPT_FOR_TAGGING_SYSTEM.md"
+            )
+
+    def _classify_tiers_batch(self, posts: List[RedditPost], project: str = 'default') -> List[Dict]:
+        """
+        Classify a batch of posts with tier tagging system (second API call).
+
+        Args:
+            posts: List of RedditPost objects to classify
+            project: Project name
+
+        Returns:
+            List of dicts with tier_tags, clusters, scoring
+        """
+        # Load project configuration
+        proj = project_loader.load(project)
+
+        # Prepare posts as JSON for the prompt
+        posts_data = []
+        for post in posts:
+            posts_data.append({
+                "post_id": post.id,
+                "title": post.title,
+                "selftext": post.truncated_selftext,
+                "author": post.author,
+                "subreddit": post.subreddit,
+            })
+
+        posts_json = json.dumps(posts_data, indent=2)
+
+        # Build the prompt from project-specific tier template
+        prompt_template = self._get_tier_prompt_template(project)
+        prompt = prompt_template.replace("{posts_json}", posts_json)
+        prompt = prompt.replace("{topic}", proj.topic)
+
+        # Call Claude API with higher token limit for tier output
+        print(f"🏷️  Tier-tagging {len(posts)} posts with {self.model}...")
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=8192,  # Tiers need more output space
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # Extract text response
+            if not response.content:
+                raise ValueError(f"Empty response from Claude API. Stop reason: {response.stop_reason}")
+            response_text = response.content[0].text
+
+            # Parse JSON response - tier responses are array of objects
+            tier_results = self._extract_json(response_text)
+
+            # Debug: print first result structure
+            if tier_results:
+                print(f"📋 First tier result keys: {list(tier_results[0].keys())}")
+
+            print(f"✓ Successfully tier-tagged {len(tier_results)} posts")
+            return tier_results
+
+        except Exception as e:
+            print(f"✗ Error calling Claude API for tier tagging: {e}")
+            print(f"Response preview: {response_text[:500] if 'response_text' in locals() else 'N/A'}...")
             raise
 
     def _extract_json(self, text: str) -> list:

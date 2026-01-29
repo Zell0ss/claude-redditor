@@ -1,7 +1,7 @@
 """Data access layer for Reddit Analyzer."""
 
 from typing import List, Dict, Optional
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.dialects.mysql import insert
 from .models import RedditPost, Classification, ScanHistory, Bookmark
 from .connection import DatabaseConnection
@@ -93,7 +93,11 @@ class Repository:
                     reasoning=cls_data.get('reasoning', ''),
                     model_version=model_version,
                     topic_tags=cls_data.get('topic_tags', []),
-                    format_tag=cls_data.get('format_tag')
+                    format_tag=cls_data.get('format_tag'),
+                    # Multi-tier tagging system
+                    tier_tags=cls_data.get('tier_tags'),
+                    tier_clusters=cls_data.get('tier_clusters', []),
+                    tier_scoring=cls_data.get('tier_scoring')
                 )
 
                 # On conflict: update
@@ -107,6 +111,9 @@ class Repository:
                     model_version=stmt.inserted.model_version,
                     topic_tags=stmt.inserted.topic_tags,
                     format_tag=stmt.inserted.format_tag,
+                    tier_tags=stmt.inserted.tier_tags,
+                    tier_clusters=stmt.inserted.tier_clusters,
+                    tier_scoring=stmt.inserted.tier_scoring,
                     classified_at=func.now()
                 )
 
@@ -546,3 +553,91 @@ class Repository:
                 })
 
             return bookmarks
+
+    # ============ TIER TAGS BACKFILL ============
+
+    def get_posts_without_tiers(
+        self,
+        project: str,
+        categories: Optional[List[str]] = None,
+        limit: int = 0
+    ) -> List[Dict]:
+        """
+        Get posts that lack tier classifications (for backfill).
+
+        Args:
+            project: Project name (e.g., 'claudeia')
+            categories: Filter by categories (e.g., ['technical', 'troubleshooting'])
+                       If None, all categories except 'unrelated' are included
+            limit: Max posts to return (0 = all)
+
+        Returns:
+            List of post dicts with metadata
+        """
+        with self.db.get_session() as session:
+            query = (
+                session.query(RedditPost, Classification)
+                .join(Classification, RedditPost.id == Classification.post_id)
+                .filter(Classification.project == project)
+                .filter(Classification.tier_tags.is_(None))
+                .filter(Classification.category != 'unrelated')
+            )
+
+            if categories:
+                query = query.filter(Classification.category.in_(categories))
+
+            if limit > 0:
+                query = query.limit(limit)
+
+            results = query.all()
+
+            # Convert to dicts for classifier
+            posts = []
+            for post, classification in results:
+                posts.append({
+                    'id': post.id,
+                    'title': post.title,
+                    'selftext': post.selftext or '',
+                    'author': post.author,
+                    'score': post.score,
+                    'num_comments': post.num_comments,
+                    'created_utc': post.created_utc,
+                    'url': post.url,
+                    'subreddit': post.subreddit,
+                    'flair': None  # Not stored in DB
+                })
+
+            logger.info(f"Found {len(posts)} posts without tier tags (project: {project})")
+            return posts
+
+    def update_classification_tiers(
+        self,
+        post_id: str,
+        project: str,
+        tier_tags: Optional[Dict[str, List[str]]],
+        tier_clusters: List[str],
+        tier_scoring: Optional[int]
+    ) -> None:
+        """
+        Update only tier fields of an existing classification (for backfill).
+
+        Args:
+            post_id: Post ID (e.g., 'reddit_abc123')
+            project: Project name
+            tier_tags: Dict with tier1-tier9 arrays
+            tier_clusters: Array of cluster descriptions
+            tier_scoring: Scoring 30-95
+        """
+        with self.db.get_session() as session:
+            stmt = (
+                update(Classification)
+                .where(Classification.post_id == post_id)
+                .where(Classification.project == project)
+                .values(
+                    tier_tags=tier_tags,
+                    tier_clusters=tier_clusters,
+                    tier_scoring=tier_scoring
+                )
+            )
+            session.execute(stmt)
+            logger.debug(f"Updated tier tags for post {post_id}")

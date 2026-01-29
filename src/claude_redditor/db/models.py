@@ -126,6 +126,22 @@ class Classification(Base):
         index=True,
         comment='Date of the digest this post was included in'
     )
+    # Multi-tier tagging system (9 tiers + scoring + clusters)
+    tier_tags = Column(
+        JSON,
+        nullable=True,
+        comment='9-tier classification structure: {tier1: [...], tier2: [...], ..., tier9: [...]}'
+    )
+    tier_clusters = Column(
+        JSON,
+        nullable=True,
+        comment='Array of detected cluster descriptions from tier analysis'
+    )
+    tier_scoring = Column(
+        Integer,
+        nullable=True,
+        comment='Scoring 30-95 based on tier pattern analysis'
+    )
 
     # UNIQUE constraint on (post_id, project)
     __table_args__ = (
@@ -146,6 +162,9 @@ class Classification(Base):
             'model_version': self.model_version,
             'topic_tags': self.topic_tags or [],
             'format_tag': self.format_tag,
+            'tier_tags': self.tier_tags,
+            'tier_clusters': self.tier_clusters or [],
+            'tier_scoring': self.tier_scoring,
             'digest_date': str(self.digest_date) if self.digest_date else None
         }
 
@@ -224,6 +243,10 @@ class Bookmark(Base):
     story_category = Column(String(50), nullable=True, comment='technical, research, etc.')
     story_topic_tags = Column(JSON, nullable=True, comment='Array of topic tags')
     story_format_tag = Column(String(50), nullable=True, comment='tutorial, code-snippet, etc.')
+    # Tier tags (denormalized from source story)
+    story_tier_tags = Column(JSON, nullable=True, comment='9-tier tags from source story')
+    story_tier_clusters = Column(JSON, nullable=True, comment='Cluster descriptions from source story')
+    story_tier_scoring = Column(Integer, nullable=True, comment='Scoring 30-95 from source story')
 
     # Link to original post for traceability
     post_id = Column(
@@ -247,5 +270,8 @@ class Bookmark(Base):
             'story_source': self.story_source,
             'story_category': self.story_category,
             'story_topic_tags': self.story_topic_tags or [],
-            'story_format_tag': self.story_format_tag
+            'story_format_tag': self.story_format_tag,
+            'story_tier_tags': self.story_tier_tags,
+            'story_tier_clusters': self.story_tier_clusters or [],
+            'story_tier_scoring': self.story_tier_scoring
         }

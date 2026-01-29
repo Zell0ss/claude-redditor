@@ -361,3 +361,133 @@ def regenerate_json(
     except Exception as e:
         rprint(f"[red]✗ Error: {e}[/red]\n")
         raise typer.Exit(1)
+
+
+@app.command(name="regenerate-tiers")
+def regenerate_tiers(
+    project: str = typer.Option("claudeia", help="Project to backfill"),
+    category_filter: str = typer.Option("SIGNAL", help="Category filter: SIGNAL, ALL"),
+    limit: int = typer.Option(0, help="Max posts to process (0 = all)"),
+    dry_run: bool = typer.Option(False, help="Show what would be done without executing"),
+):
+    """
+    Regenerate tier classifications for historical posts.
+
+    This command backfills the tier tagging system for posts that already have
+    category classifications but lack tier data (tier_tags, tier_clusters, tier_scoring).
+
+    Useful for:
+    - Adding tier data to historical posts after implementing the tier system
+    - Re-classifying posts with updated tier prompts
+
+    Examples:
+
+        # Dry run to see what would be processed
+        reddit-analyzer regenerate-tiers --project claudeia --dry-run
+
+        # Backfill SIGNAL posts (technical, troubleshooting, research_verified)
+        reddit-analyzer regenerate-tiers --project claudeia --category-filter SIGNAL
+
+        # Backfill first 50 posts only
+        reddit-analyzer regenerate-tiers --project claudeia --limit 50
+
+        # Backfill all categories except UNRELATED
+        reddit-analyzer regenerate-tiers --project claudeia --category-filter ALL
+    """
+    ensure_mysql_configured(settings)
+
+    from ..db.connection import DatabaseConnection
+    from ..db.repository import Repository
+    from ..classifier import create_classifier
+    from ..core.models import RedditPost
+
+    try:
+        rprint(f"\n[cyan]Regenerating tier tags for project: {project}[/cyan]\n")
+
+        db = DatabaseConnection(settings)
+        repo = Repository(db)
+        classifier = create_classifier()
+
+        # Determine category filter
+        if category_filter.upper() == "SIGNAL":
+            categories = ['technical', 'troubleshooting', 'research_verified']
+            rprint(f"[yellow]→[/yellow] Category filter: SIGNAL (technical, troubleshooting, research_verified)")
+        elif category_filter.upper() == "ALL":
+            categories = None
+            rprint(f"[yellow]→[/yellow] Category filter: ALL (except UNRELATED)")
+        else:
+            rprint(f"[red]✗ Invalid category filter: {category_filter}[/red]")
+            rprint("[yellow]Valid options: SIGNAL, ALL[/yellow]\n")
+            raise typer.Exit(1)
+
+        # Get posts without tier tags
+        rprint(f"[yellow]→[/yellow] Querying database for posts without tier tags...")
+        posts_data = repo.get_posts_without_tiers(
+            project=project,
+            categories=categories,
+            limit=limit
+        )
+
+        if not posts_data:
+            rprint(f"\n[green]✓ No posts found without tier tags[/green]\n")
+            return
+
+        rprint(f"[bold cyan]Found {len(posts_data)} posts without tier tags[/bold cyan]\n")
+
+        if dry_run:
+            rprint("[yellow]DRY RUN - No changes will be made[/yellow]")
+            rprint(f"\n[dim]Would process {len(posts_data)} posts with tier classification[/dim]\n")
+            return
+
+        # Convert to RedditPost objects for classifier
+        posts = [
+            RedditPost(
+                id=p['id'],
+                title=p['title'],
+                selftext=p['selftext'],
+                author=p['author'],
+                score=p['score'],
+                num_comments=p['num_comments'],
+                created_utc=p['created_utc'],
+                url=p['url'],
+                subreddit=p['subreddit'] or '',
+                flair=p.get('flair')
+            )
+            for p in posts_data
+        ]
+
+        # Process in batches
+        batch_size = 20
+        total_processed = 0
+
+        for i in range(0, len(posts), batch_size):
+            batch = posts[i:i+batch_size]
+
+            try:
+                # Call tier classification directly
+                tier_results = classifier._classify_tiers_batch(batch, project=project)
+
+                # Update DB with tier data
+                for tier_data in tier_results:
+                    repo.update_classification_tiers(
+                        post_id=tier_data['post_id'],
+                        project=project,
+                        tier_tags=tier_data.get('tier_tags'),
+                        tier_clusters=tier_data.get('clusters', []),
+                        tier_scoring=tier_data.get('scoring')
+                    )
+
+                total_processed += len(tier_results)
+                rprint(f"  [green]✓[/green] Processed {total_processed}/{len(posts)} posts")
+
+            except Exception as e:
+                rprint(f"  [red]✗[/red] Error processing batch: {e}")
+                continue
+
+        rprint(f"\n[bold green]✓ Tier backfill complete! Processed {total_processed} posts[/bold green]\n")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        rprint(f"[red]✗ Error: {e}[/red]\n")
+        raise typer.Exit(1)

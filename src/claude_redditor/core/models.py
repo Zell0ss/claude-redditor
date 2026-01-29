@@ -61,6 +61,10 @@ class Classification:
     reasoning: str = ""
     topic_tags: List[str] = field(default_factory=list)
     format_tag: Optional[str] = None
+    # Multi-tier tagging system (9 tiers + scoring + clusters)
+    tier_tags: Optional[Dict[str, List[str]]] = None
+    tier_clusters: List[str] = field(default_factory=list)
+    tier_scoring: Optional[int] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -72,6 +76,9 @@ class Classification:
             "reasoning": self.reasoning,
             "topic_tags": self.topic_tags,
             "format_tag": self.format_tag,
+            "tier_tags": self.tier_tags,
+            "tier_clusters": self.tier_clusters,
+            "tier_scoring": self.tier_scoring,
         }
 
 

@@ -331,7 +331,12 @@ class CachedAnalysisEngine:
                     category=CategoryEnum(data['category']),
                     confidence=data['confidence'],
                     red_flags=data['red_flags'],
-                    reasoning=data['reasoning']
+                    reasoning=data['reasoning'],
+                    topic_tags=data.get('topic_tags', []),
+                    format_tag=data.get('format_tag'),
+                    tier_tags=data.get('tier_tags'),
+                    tier_clusters=data.get('tier_clusters', []),
+                    tier_scoring=data.get('tier_scoring'),
                 )
             )
 
@@ -373,14 +378,19 @@ class CachedAnalysisEngine:
             # Save to DB (with truncated selftext for NOISE/UNRELATED)
             self.repo.save_posts(to_classify, source=source, project=project)
 
-            # Convert to dicts for saving
+            # Convert to dicts for saving (include ALL fields)
             new_classifications_dicts = [
                 {
                     'post_id': c.post_id,
                     'category': c.category.value,
                     'confidence': c.confidence,
                     'red_flags': c.red_flags,
-                    'reasoning': c.reasoning
+                    'reasoning': c.reasoning,
+                    'topic_tags': c.topic_tags,
+                    'format_tag': c.format_tag,
+                    'tier_tags': c.tier_tags,
+                    'tier_clusters': c.tier_clusters,
+                    'tier_scoring': c.tier_scoring,
                 }
                 for c in new_classifications
             ]

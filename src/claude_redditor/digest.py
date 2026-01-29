@@ -636,6 +636,10 @@ class DigestGenerator:
             "format_tag": classification.get('format_tag'),
             "red_flags": classification.get('red_flags', []),
             "reasoning": classification.get('reasoning', ''),
+            # Multi-tier tagging system
+            "tier_tags": classification.get('tier_tags'),
+            "tier_clusters": classification.get('tier_clusters', []),
+            "tier_scoring": classification.get('tier_scoring'),
             # Article content (from Claude digest generation)
             "article_title": article.get('article_title') if article else None,
             "article_body": article.get('article_body') if article else None,
