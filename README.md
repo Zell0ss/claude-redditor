@@ -20,7 +20,8 @@ cp .env.example .env
 ## What It Does
 
 - **Multi-source scraping**: Reddit (RSS/PRAW) + HackerNews (Firebase API)
-- **AI classification**: Claude Haiku categorizes posts as SIGNAL/NOISE/META
+- **AI classification**: Claude Haiku categorizes posts as SIGNAL/NOISE/META with multi-tier tags
+- **Deep analysis**: 9-tier classification system for SIGNAL posts (tech stack, patterns, strategy)
 - **Daily digest**: Auto-generates Spanish newsletter from top SIGNAL posts
 - **Multi-project**: Isolated configs for different topics (AI podcast, wine blog)
 - **Cost optimization**: MariaDB cache reduces API costs by 70-80%

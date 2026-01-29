@@ -18,9 +18,11 @@ Main use case: monitor online communities about a specific topic (e.g., AI, wine
 
 ```
 1. INGESTION: Reddit (RSS/PRAW) + HackerNews (Firebase) → Raw posts
-2. PROCESSING: Classifier (Claude Haiku) → Category + Red Flags + Topic Tags
-3. STORAGE: MariaDB (posts + classifications + bookmarks)
-4. OUTPUT: Digest (Markdown + JSON) → Web viewer (Astro)
+2. PROCESSING: Two-pass classification
+   - Pass 1: Category + Red Flags + Topic Tags (Claude Haiku)
+   - Pass 2: 9-Tier Deep Analysis for non-UNRELATED posts (Claude Haiku)
+3. STORAGE: MariaDB (posts + classifications with tier_tags + bookmarks)
+4. OUTPUT: Digest (Markdown + JSON with tier data) → Web viewer (Astro)
 ```
 
 **Flow description**:
@@ -29,7 +31,10 @@ Main use case: monitor online communities about a specific topic (e.g., AI, wine
 
 2. **Cache check**: Before classifying, it checks if the post already exists in MariaDB. If it exists and has a classification for this project, it's reused (~70-80% API cost savings).
 
-3. **Classification**: New posts are sent to Claude in batches of 20. Claude assigns one of 10 categories, detected red flags, topic_tags and format_tag. Selftext truncation happens AFTER classification: SIGNAL/META keep up to 5000 chars, NOISE/UNRELATED only 500.
+3. **Classification**: Two-pass system in batches of 20:
+   - **Pass 1**: Claude assigns one of 10 categories, red flags, topic_tags, and format_tag
+   - **Pass 2**: Non-UNRELATED posts get deep 9-tier analysis (tech stack, patterns, governance, strategy) + scoring (30-95) + cluster detection
+   - Selftext truncation happens AFTER classification: SIGNAL/META keep up to 5000 chars, NOISE/UNRELATED only 500.
 
 4. **Digest**: SIGNAL posts not yet sent (`sent_in_digest_at IS NULL`) are processed with Claude to generate articles in Spanish. Dual output: markdown for email/reading + JSON for web viewer.
 
@@ -146,6 +151,41 @@ ClaudeRedditor/
 
 ---
 
+### Two-pass classification with tier system
+
+**Why**: Basic categories (SIGNAL/NOISE) are insufficient for deep content analysis. A 9-tier system provides structured metadata for tech stack, patterns, governance, and strategy.
+
+**Alternatives rejected**:
+- Single prompt with all classification (too complex, harder to maintain)
+- Manual tagging (doesn't scale, inconsistent)
+- Simple flat tags (loses structure, hard to query)
+
+**Decision**: Two separate API calls:
+1. First call: Category classification (determines if worth deep analysis)
+2. Second call: 9-tier deep analysis (only for non-UNRELATED posts)
+
+**Trade-off accepted**:
+- **Cost**: +140% API cost (~$2.62/month additional)
+- **Latency**: 2x API calls per batch
+- **Benefit**: Rich structured metadata for filtering, search, and analytics
+
+**9 Tiers**:
+- Tier 1: Identifiers (anthropic, claude, openai, etc.)
+- Tier 2: Technical category (code-generation, ai-capabilities, etc.)
+- Tier 3: Patterns/Signals (democratization, capability-expansion, etc.)
+- Tier 4: Implications (trust-deficit, business-model-shift, etc.)
+- Tier 5: Implementation (tools, languages, OS, hardware, AI modalities)
+- Tier 6: Integration patterns (abstraction-layer, human-in-the-loop, etc.)
+- Tier 7: Methodology/Governance (human-decision-maker, continuous-validation, etc.)
+- Tier 8: Security/Risk (defense strategies, trust levels, risk surface)
+- Tier 9: Strategic positioning (safety-focused, ecosystem-hub, etc.)
+
+**Scoring**: 30-95 based on tier pattern analysis (low/medium/high value)
+
+**Clusters**: Detected patterns like "production-safe automation", "democratization with potential", etc.
+
+---
+
 ## Data and Models
 
 ### Main Data Model
@@ -169,6 +209,9 @@ erDiagram
         enum category "10 categories"
         json topic_tags "prompts,tools,models..."
         string format_tag "tutorial,showcase..."
+        json tier_tags "9-tier deep analysis"
+        json tier_clusters "detected patterns"
+        int tier_scoring "30-95 value score"
         timestamp sent_in_digest_at
     }
     bookmarks {
@@ -238,10 +281,10 @@ Raw Post (Reddit/HN API)
 - 9 CLI commands + 5 bookmark subcommands
 - Multi-project with auto-discovery
 - Reddit (RSS/PRAW) + HackerNews
-- 10 categories + red flags + topic_tags
-- Dual digest output (markdown + JSON)
-- Bookmarks with traceability (post_id)
-- Web viewer (Astro)
+- 10 categories + red flags + topic_tags + 9-tier deep analysis
+- Dual digest output (markdown + JSON with tier data)
+- Bookmarks with traceability (post_id) + tier metadata
+- Web viewer (Astro) with tier tags support
 
 📋 **Known TODOs**:
 - More sources (Twitter/X, newsletters)
@@ -446,11 +489,12 @@ class NewSourceScraper(BaseScraper):
 - HackerNews: ~20-30 matching posts (keyword-based filtering)
 - Cache hit rate: 70-80% (posts already classified in previous scans)
 
-**API costs** (estimated):
+**API costs** (estimated with tier system):
 - New posts per day: ~20-30 (after cache)
-- Classification: 20-30 posts / 20 batch size = **~2-3 Haiku calls/day**
+- Classification pass 1 (category): **~2-3 Haiku calls/day**
+- Classification pass 2 (tiers): **~2-3 additional Haiku calls/day** (only non-UNRELATED)
 - Digest generation: **1 Sonnet call/day** (for SIGNAL stories)
-- **Monthly cost**: ~$3-5 USD (mostly digest generation, classification is cheap)
+- **Monthly cost**: ~$4-6 USD (+140% classification cost, but still cheap)
 
 **Cost analysis**:
 - Current cache already provides 70-80% savings
