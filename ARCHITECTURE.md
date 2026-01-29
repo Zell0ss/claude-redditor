@@ -286,6 +286,118 @@ outputs/
 
 ---
 
+### 8. Digest Generation Pipeline
+
+**Decision**: Transform stored SIGNAL posts into narrative content via Claude API.
+
+#### Flow
+
+```
+Database (SIGNAL posts)
+  → Fetch full content if truncated
+  → Transform via Claude (Spanish journalism + commentary)
+  → Write markdown + JSON
+  → Mark as sent
+```
+
+#### Key Design Decisions
+
+**8.1. Only SIGNAL posts are digested**
+
+```python
+# Query: category IN ('critical', 'emerging', 'innovation')
+#        AND sent_in_digest_at IS NULL
+```
+
+**Why**:
+- Newsletter should only contain high-quality content
+- NOISE/META posts already filtered during classification
+- `sent_in_digest_at IS NULL` prevents duplicates across digests
+
+**Trade-off**: Lower volume, but higher quality.
+
+**8.2. Content fetching on truncated posts**
+
+```python
+if item['selftext_truncated'] and post.get('url'):
+    full_content = fetch_full_content(post['url'])
+```
+
+**Why**:
+- Classification only needs summary (truncated at 5000 chars)
+- Digest needs full content for quality articles
+- Lazy fetching: only when needed for digest
+
+**Trade-off**: Extra HTTP requests during digest, but saves storage.
+
+**Alternative rejected**: Store full content always (wastes DB space for posts never digested).
+
+**8.3. Claude API transforms content**
+
+Each post → Claude API with project-specific prompt → Spanish article + commentary
+
+**Why**:
+- Raw Reddit/HN posts are not newsletter-ready
+- Need professional journalism tone in Spanish
+- Context and explanation required for general audience
+- Radio commentary adds personality/engagement
+
+**Input to Claude**:
+- Post title, content, metadata (score, comments)
+- Category from classification
+- Project-specific prompt template
+
+**Output from Claude**:
+```json
+{
+  "article_title": "Spanish headline",
+  "article_body": "1000+ char article",
+  "radio_commentary": "150-300 word commentary"
+}
+```
+
+**Trade-off**: API cost per digest, but necessary for quality transformation.
+
+**8.4. generate_both() ensures consistency**
+
+```python
+md_path, json_path = generator.generate_both(project, limit)
+# Same posts, same order, same sequence number
+```
+
+**Why**:
+- Markdown and JSON must have identical story IDs for cross-referencing
+- Story ID format: `{date}_{seq}_{idx}` (e.g., "2026-01-29_01_003")
+- Markdown can reference `2026-01-29_01_003` → JSON has same ID
+
+**Alternative rejected**: Generate separately (risk of ID mismatch if posts change between calls).
+
+**8.5. Posts marked as sent AFTER both formats succeed**
+
+```python
+# Only after markdown AND JSON are written
+repo.mark_posts_as_sent_in_digest(processed_ids, project)
+```
+
+**Why**:
+- If digest fails mid-generation, posts remain available for retry
+- Atomic operation: both formats or neither
+- `sent_in_digest_at` timestamp enables history tracking
+
+**8.6. Sequential digest numbering**
+
+```
+outputs/digests/digest_claudeia_2026-01-29_01.md
+outputs/web/claudeia_2026-01-29_01.json
+```
+
+**Why**:
+- Multiple digests per day (01, 02, 03...)
+- Story IDs encode digest: `2026-01-29_01_003` = 3rd story in 1st digest of Jan 29
+- Web viewer uses digest_id to group stories
+
+---
+
 ## Component Responsibilities
 
 ### Scrapers (`scrapers/`)

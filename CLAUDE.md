@@ -7,10 +7,25 @@ STATUS: ✅ Production | 9 CLI commands + bookmark subcommands | Multi-project |
 
 FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON → Web(Astro)
 
-CLI: scan, scan-hn, compare, digest, config, init-db, history, cache-stats, regenerate-json
+CLI: scan, compare, digest, config, init-db, history, cache-stats, regenerate-json
      bookmark show|add|list|done|status
 
 FILES:
+Root Level:
+├─ CLAUDE.md, ARCHITECTURE.md, BRIEFING.md, README.md → Documentation
+├─ QUICKSTART.md, TAGGING_SYSTEM.md, Makefile         → Guides + commands
+├─ reddit-analyzer                                     → CLI entry point
+├─ pyproject.toml                                      → Python project config
+└─ test_cli.py, test_hn_scraper.py                    → Test files
+
+src/claude_redditor/
+├─ analyzer.py         → Metrics + CachedAnalysisEngine
+├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
+├─ config.py           → Settings (pydantic-settings) - secrets only
+├─ content_fetcher.py  → Fetch full content if truncated
+├─ digest.py           → Newsletter (MD) + JSON export for web
+├─ projects.py         → ProjectLoader - auto-discovers projects/
+├─ reporter.py         → Report generation
 ├─ cli/                → CLI commands (Typer best practices)
 │  ├─ __init__.py      → Main app, aggregates subcommands
 │  ├─ scan.py          → scan, scan-hn, compare
@@ -19,26 +34,42 @@ FILES:
 │  ├─ db.py            → init-db, history, cache-stats, regenerate-json
 │  ├─ info.py          → config, version (auto-discovers projects)
 │  └─ helpers.py       → Output formatting (Rich)
-├─ classifier.py       → Classification logic (batch=20) + topic_tags/format_tag
-├─ analyzer.py         → Metrics + CachedAnalysisEngine
-├─ digest.py           → Newsletter (MD) + JSON export for web
-├─ content_fetcher.py  → Fetch full content if truncated
-├─ config.py           → Settings (pydantic-settings) - secrets only
-├─ projects.py         → ProjectLoader - auto-discovers projects/
-├─ db/repository.py    → All DB queries + bookmark CRUD
-├─ db/models.py        → ORM models (RedditPost, Classification, ScanHistory, Bookmark)
-├─ scrapers/           → reddit.py (RSS/PRAW), hackernews.py (Firebase)
-├─ projects/           → Self-contained project definitions
-│  ├─ claudeia/        → AI/LLM content (podcast)
-│  │  ├─ config.yaml   → topic, subreddits, hn_keywords
-│  │  └─ prompts/      → classify.md, digest.md
-│  └─ wineworld/       → Wine industry (blog)
-│     ├─ config.yaml
-│     └─ prompts/
+├─ core/               → Core definitions
+│  ├─ enums.py         → CategoryEnum, RED_FLAG_PATTERNS, etc.
+│  └─ models.py        → Core data models
+├─ db/                 → Database layer
+│  ├─ connection.py    → Database connection management
+│  ├─ models.py        → ORM models (RedditPost, Classification, ScanHistory, Bookmark)
+│  └─ repository.py    → All DB queries + bookmark CRUD
+├─ scrapers/           → Data scrapers
+│  ├─ base.py          → Base scraper class
+│  ├─ reddit.py        → Reddit scraper (RSS/PRAW)
+│  └─ hackernews.py    → HackerNews scraper (Firebase)
+└─ projects/           → Self-contained project definitions
+   ├─ claudeia/        → AI/LLM content (podcast)
+   │  ├─ config.yaml   → topic, subreddits, hn_keywords
+   │  └─ prompts/      → classify.md, digest.md, tagging.md
+   └─ wineworld/       → Wine industry (blog)
+      ├─ config.yaml
+      └─ prompts/      → classify.md, digest.md, tagging.md
+
 web/                   → Astro static site for viewing digests
-├─ src/components/     → TagBadge.astro, StoryCard.astro
-├─ src/pages/          → index.astro, digest/[id].astro
-└─ src/types/          → TypeScript types for digest JSON
+├─ astro.config.mjs, package.json, tsconfig.json → Configuration
+├─ public/             → Static assets (favicon, images)
+└─ src/
+   ├─ components/      → BookmarkCard, StoryCard, SwarmBackground, TagBadge
+   ├─ layouts/         → Layout.astro
+   ├─ pages/           → index, bookmarks, digest/[id], story/[id]
+   ├─ styles/          → global.css
+   └─ types/           → digest.ts (TypeScript types for digest JSON)
+
+Other Directories:
+├─ outputs/            → Generated outputs (cache, classifications, digests, reports, web JSONs)
+├─ scripts/            → Automation (daily-scan.sh, daily-digest.sh, deploy-web.sh, send-digest.sh)
+├─ docs/               → HOW-TO-ADD-PROJECT.md, HOW-TO-DEPLOY.md
+├─ logs/               → Application logs (daily log files)
+├─ tests/              → Test files + fixtures
+└─ commenter_img/      → Branding/assets (commenter expressions)
 
 DESIGN:
 - Multi-tags: topic_tags (array) + format_tag (single) per classification
@@ -64,10 +95,10 @@ source .venv/bin/activate
 
 # Run CLI
 ./reddit-analyzer --help
-./reddit-analyzer scan ClaudeAI --limit 20
-./reddit-analyzer scan all --project claudeia --limit 50           # All subreddits
-./reddit-analyzer scan all --include-hn --project claudeia         # All sources (Reddit + HN)
-./reddit-analyzer scan-hn --project claudeia --limit 20            # HN with project keywords
+./reddit-analyzer scan claudeia --limit 20                         # All sources (Reddit + HN)
+./reddit-analyzer scan claudeia --source reddit --limit 50         # Reddit only
+./reddit-analyzer scan claudeia --source hackernews --limit 20     # HackerNews only
+./reddit-analyzer compare claudeia --limit 30                      # Compare subreddits
 ./reddit-analyzer digest --project claudeia --dry-run
 ./reddit-analyzer digest --project claudeia  # Generates both markdown + JSON by default
 
@@ -88,6 +119,22 @@ cd web && npm run build  # Static build to web/dist/
 ./reddit-analyzer init-db
 ./reddit-analyzer config
 ```
+
+## Claude Code: End of Session Workflow
+
+**When the user says**: "Please finalize this session" / "End of session" / "Update docs and commit"
+
+**You must**:
+1. **Read** `.claude/skills/finish-session.md` (217 lines of detailed instructions)
+2. **Follow** all 9 steps exactly as documented in that file
+3. This includes:
+   - Analyzing ALL git changes (from any source: this session, other Claudes, manual edits)
+   - Reading `.github/prompts/DOCUMENTATION_PROMPT.md` standards
+   - Using the decision matrix to determine what docs to update
+   - Updating CLAUDE.md, ARCHITECTURE.md, BRIEFING.md, README.md as needed
+   - Showing diff and asking for confirmation before commit/push
+
+**File location**: `.claude/skills/finish-session.md`
 
 ## Key Files Reference
 

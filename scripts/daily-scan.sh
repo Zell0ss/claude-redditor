@@ -54,20 +54,12 @@ else
     exit 1
 fi
 
-# Scan Reddit subreddits (configured per project)
-log_info "Scanning Reddit..."
-if ./reddit-analyzer scan all --project "$PROJECT" --limit 50; then
-    log_success "Reddit scan complete"
+# Scan all sources (Reddit + HackerNews, configured per project)
+log_info "Scanning all sources..."
+if ./reddit-analyzer scan "$PROJECT" --limit 50; then
+    log_success "Scan complete"
 else
-    log_error "Reddit scan failed"
-fi
-
-# Scan HackerNews (configured per project)
-log_info "Scanning HackerNews..."
-if ./reddit-analyzer scan-hn --project "$PROJECT" --limit 30; then
-    log_success "HackerNews scan complete"
-else
-    log_error "HackerNews scan failed"
+    log_error "Scan failed"
 fi
 
 log "=========================================="

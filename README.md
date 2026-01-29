@@ -13,7 +13,7 @@ pip install -e .
 cp .env.example .env
 
 # Scan & generate digest
-./reddit-analyzer scan all --project claudeia --limit 50
+./reddit-analyzer scan claudeia --limit 50
 ./reddit-analyzer digest --project claudeia
 ```
 
