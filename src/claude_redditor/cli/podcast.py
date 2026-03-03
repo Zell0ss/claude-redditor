@@ -174,7 +174,7 @@ def podcast(
     try:
         from ..projects import project_loader
         project_loader.load(project)
-    except Exception:
+    except FileNotFoundError:
         rprint(f"[red]✗ Proyecto '{project}' no encontrado.[/red]")
         rprint("[dim]Usa 'reddit-analyzer config' para ver proyectos disponibles.[/dim]")
         raise typer.Exit(1)
