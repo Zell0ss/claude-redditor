@@ -20,6 +20,7 @@ from . import digest_cmd
 from . import bookmark
 from . import db
 from . import info
+from . import podcast
 
 # Main application
 app = typer.Typer(
@@ -42,6 +43,9 @@ app.add_typer(db.app, name="")
 
 # Add info commands at top level
 app.add_typer(info.app, name="")
+
+# Add podcast command at top level
+app.add_typer(podcast.app, name="")
 
 
 def main():
