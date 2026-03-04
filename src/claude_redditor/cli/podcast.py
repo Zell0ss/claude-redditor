@@ -1,6 +1,7 @@
 """Podcast generation command using Google NotebookLM."""
 
 import asyncio
+import re
 import typer
 from pathlib import Path
 from datetime import date as date_type
@@ -141,6 +142,11 @@ def podcast(
         "--focus",
         help="Instrucción adicional de enfoque para el audio",
     ),
+    file: Optional[Path] = typer.Option(
+        None,
+        "--file",
+        help="Path directo al fichero digest .md (alternativa a --date)",
+    ),
 ):
     """
     Genera un podcast a partir de un digest usando Google NotebookLM.
@@ -154,37 +160,46 @@ def podcast(
 
         reddit-analyzer podcast --project claudeia --date 2026-03-03
 
-        reddit-analyzer podcast --project claudeia --no-cleanup
+        reddit-analyzer podcast --project claudeia --file /data/.../digest_claudeia_2026-03-04_02.md
     """
-    # Resolve date
-    date_str = date or date_type.today().isoformat()
-
-    # Resolve paths (relative to CWD which is project root when using CLI)
     outputs_root = Path("outputs")
     resolved_output_dir = output_dir or outputs_root / "podcasts"
-    output_path = resolved_output_dir / f"podcast_{project}_{date_str}.mp3"
+
+    # Resolve digest path and output filename
+    if file:
+        digest_path = Path(file)
+        if not digest_path.exists():
+            rprint(f"[red]✗ Fichero no encontrado: {file}[/red]")
+            raise typer.Exit(1)
+        # Extract date from filename for notebook title
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", digest_path.name)
+        date_str = date_match.group() if date_match else "unknown"
+        # Mirror input name: digest_claudeia_2026-03-04_02 → podcast_claudeia_2026-03-04_02
+        output_stem = digest_path.stem.replace("digest_", "podcast_", 1)
+        output_path = resolved_output_dir / f"{output_stem}.mp3"
+    else:
+        date_str = date or date_type.today().isoformat()
+        # Validate project exists (only needed when auto-discovering digest)
+        try:
+            from ..projects import project_loader
+            project_loader.load(project)
+        except FileNotFoundError:
+            rprint(f"[red]✗ Proyecto '{project}' no encontrado.[/red]")
+            rprint("[dim]Usa 'reddit-analyzer config' para ver proyectos disponibles.[/dim]")
+            raise typer.Exit(1)
+        try:
+            digest_path = _find_digest(project, date_str, outputs_root)
+        except FileNotFoundError as e:
+            rprint(f"[red]✗ {e}[/red]")
+            raise typer.Exit(1)
+        output_path = resolved_output_dir / f"podcast_{project}_{date_str}.mp3"
+
     notebook_title = f"Podcast IA - {project} {date_str}"
 
     # Build instructions
     instructions = DEFAULT_INSTRUCTIONS
     if focus:
         instructions += f" Enfoque especial: {focus}"
-
-    # Validate project exists
-    try:
-        from ..projects import project_loader
-        project_loader.load(project)
-    except FileNotFoundError:
-        rprint(f"[red]✗ Proyecto '{project}' no encontrado.[/red]")
-        rprint("[dim]Usa 'reddit-analyzer config' para ver proyectos disponibles.[/dim]")
-        raise typer.Exit(1)
-
-    # Find digest file
-    try:
-        digest_path = _find_digest(project, date_str, outputs_root)
-    except FileNotFoundError as e:
-        rprint(f"[red]✗ {e}[/red]")
-        raise typer.Exit(1)
 
     if dry_run:
         rprint(Panel(
