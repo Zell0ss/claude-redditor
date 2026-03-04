@@ -145,7 +145,7 @@ def podcast(
     file: Optional[Path] = typer.Option(
         None,
         "--file",
-        help="Path directo al fichero digest .md (alternativa a --date)",
+        help="Path directo al fichero digest .md. Mutuamente excluyente con --date.",
     ),
 ):
     """
@@ -153,6 +153,12 @@ def podcast(
 
     Sube el digest del día a NotebookLM, genera un Audio Overview
     conversacional en español y descarga el MP3 resultante.
+
+    \b
+    Selección del digest (usar solo uno):
+      --date YYYY-MM-DD   Busca el digest más reciente de esa fecha.
+      --file PATH         Usa ese fichero directamente (útil cuando hay
+                          varios digests por día y quieres elegir uno).
 
     Examples:
 
@@ -162,6 +168,10 @@ def podcast(
 
         reddit-analyzer podcast --project claudeia --file /data/.../digest_claudeia_2026-03-04_02.md
     """
+    if date and file:
+        rprint("[red]✗ --date y --file son mutuamente excluyentes. Usa solo uno.[/red]")
+        raise typer.Exit(1)
+
     outputs_root = Path("outputs")
     resolved_output_dir = output_dir or outputs_root / "podcasts"
 
