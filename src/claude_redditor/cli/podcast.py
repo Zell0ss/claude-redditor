@@ -39,6 +39,7 @@ async def _generate_podcast(
     notebook_title: str,
     instructions: str,
     cleanup: bool,
+    timeout: float = 1800.0,
 ) -> str:
     """Core async logic: upload digest to NotebookLM, generate audio, download."""
     try:
@@ -69,7 +70,7 @@ async def _generate_podcast(
             )
 
             # Step 3: Generate audio
-            rprint("[cyan]Generando audio... (esto puede tardar 2-5 minutos)[/cyan]")
+            rprint(f"[cyan]Generando audio... (timeout: {int(timeout)}s)[/cyan]")
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -81,9 +82,19 @@ async def _generate_podcast(
                     language="es",
                     instructions=instructions,
                 )
-                await client.artifacts.wait_for_completion(
-                    notebook_id, status.task_id, timeout=600.0
-                )
+                try:
+                    await client.artifacts.wait_for_completion(
+                        notebook_id, status.task_id, timeout=timeout
+                    )
+                except TimeoutError:
+                    rprint(
+                        f"\n[yellow]⚠ Timeout tras {int(timeout)}s. "
+                        f"El audio puede seguir generándose en NotebookLM.[/yellow]"
+                        f"\n[yellow]  Notebook ID: {notebook_id}[/yellow]"
+                        f"\n[yellow]  Task ID:     {status.task_id}[/yellow]"
+                    )
+                    rprint("[cyan]Intentando descargar de todas formas...[/cyan]")
+                    # Fall through to download — audio may already be ready
 
             # Step 4: Download MP3
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +157,11 @@ def podcast(
         None,
         "--file",
         help="Path directo al fichero digest .md. Mutuamente excluyente con --date.",
+    ),
+    timeout: int = typer.Option(
+        1800,
+        "--timeout",
+        help="Segundos máximos esperando la generación del audio (default: 1800 = 30 min).",
     ),
 ):
     """
@@ -235,6 +251,7 @@ def podcast(
             notebook_title=notebook_title,
             instructions=instructions,
             cleanup=cleanup,
+            timeout=float(timeout),
         ))
     except RuntimeError as e:
         rprint(f"\n[red]✗ {e}[/red]\n")
