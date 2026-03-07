@@ -202,7 +202,7 @@ def podcast(
         date_str = date_match.group() if date_match else "unknown"
         # Mirror input name: digest_claudeia_2026-03-04_02 → podcast_claudeia_2026-03-04_02
         output_stem = digest_path.stem.replace("digest_", "podcast_", 1)
-        output_path = resolved_output_dir / f"{output_stem}.mp3"
+        output_path = resolved_output_dir / f"{output_stem}.m4a"
     else:
         date_str = date or date_type.today().isoformat()
         # Validate project exists (only needed when auto-discovering digest)
@@ -218,7 +218,7 @@ def podcast(
         except FileNotFoundError as e:
             rprint(f"[red]✗ {e}[/red]")
             raise typer.Exit(1)
-        output_path = resolved_output_dir / f"podcast_{project}_{date_str}.mp3"
+        output_path = resolved_output_dir / f"podcast_{project}_{date_str}.m4a"
 
     notebook_title = f"Podcast IA - {project} {date_str}"
 

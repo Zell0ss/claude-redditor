@@ -66,8 +66,8 @@ OPTIONS
     --output-dir  PATH         Directorio donde se guarda el MP3.
                                Default: outputs/podcasts/
                                El nombre del fichero sigue el patrón:
-                                 podcast_{project}_{date}.mp3          (con --date)
-                                 podcast_{project}_{date}_{N}.mp3      (con --file)
+                                 podcast_{project}_{date}.m4a          (con --date)
+                                 podcast_{project}_{date}_{N}.m4a      (con --file)
 
     --focus  TEXT              Instrucción adicional de enfoque que se añade al
                                prompt de generación. Ej: "modelos de lenguaje"
@@ -114,6 +114,11 @@ capturarlo desde scripts o pipelines (n8n, cron):
 ```bash
 MP3=$(./reddit-analyzer podcast --project claudeia --output-dir /data/voice_rec/ | tail -1)
 echo "Podcast generado en: $MP3"
+```
+#### para acordarse: 
+
+```bash
+./reddit-analyzer podcast --project claudeia --file outputs/digests/digest_claudeia_2026-03-05_01.md --timeout 1200 --output-dir /data/voice_rec/ 
 ```
 
 **Errores comunes:**
