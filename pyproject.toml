@@ -16,6 +16,7 @@ dependencies = [
     "pymysql>=1.1.0",        # MariaDB/MySQL driver
     "sqlalchemy>=2.0.0",     # ORM for database
     "cryptography>=42.0.0",  # Required by pymysql
+    "notebooklm>=0.3.3",     # podcast generation
 ]
 
 [project.scripts]

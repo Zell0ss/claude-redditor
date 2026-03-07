@@ -62,3 +62,6 @@ test_scraper.py
 test_claude_subreddit.py
 backup_*.sql
 to_gazzette.md
+storage_state.json
+.claude/settings.json
+docs/plans
