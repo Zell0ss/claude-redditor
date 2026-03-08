@@ -15,6 +15,7 @@ Structure:
 
 import typer
 
+from ..logcentral_setup import setup_logcentral
 from . import scan
 from . import digest_cmd
 from . import bookmark
@@ -50,6 +51,7 @@ app.add_typer(podcast.app, name="")
 
 def main():
     """Entry point for the CLI."""
+    setup_logcentral(log_dir=None)
     app()
 
 
