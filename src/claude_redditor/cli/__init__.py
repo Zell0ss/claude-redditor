@@ -13,6 +13,8 @@ Structure:
 - helpers.py: Output formatting and common operations
 """
 
+from pathlib import Path
+
 import typer
 
 from ..logcentral_setup import setup_logcentral
@@ -51,7 +53,7 @@ app.add_typer(podcast.app, name="")
 
 def main():
     """Entry point for the CLI."""
-    setup_logcentral(log_dir=None)
+    setup_logcentral(log_dir=Path("/data/ClaudeRedditor/logs"))
     app()
 
 
