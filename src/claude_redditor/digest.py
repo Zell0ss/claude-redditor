@@ -343,6 +343,10 @@ class DigestGenerator:
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error for {post.get('id')}: {e}")
         except Exception as e:
+            error_str = str(e)
+            if "credit balance is too low" in error_str or "insufficient_quota" in error_str:
+                logger.critical(f"Anthropic API credits exhausted — recharge at console.anthropic.com/billing: {e}")
+                raise
             logger.error(f"Failed to generate article for {post.get('id')}: {e}")
 
         return None

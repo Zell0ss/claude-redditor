@@ -1,0 +1,464 @@
+{
+  "name": "ClaudeIA Gazzette",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -640,
+        96
+      ],
+      "id": "ece0640b-03f7-4b84-bb9b-2c3674f5e905",
+      "name": "Trigger mañanero",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "content": "## The mailer of the Gazette\n\nRuns once every morning\n"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -336
+      ],
+      "id": "9201d471-cf8f-476b-8d48-74f00fdf1669",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Everything OK\nIf all was well ** OK by Telegram **",
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        768,
+        -176
+      ],
+      "id": "56849a05-d855-43ed-849b-8959d62a6a4b",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract file path from markdown line\nconst stdout = $input.first().json.stdout || '';\nconst lines = stdout.trim().split('\\n');\n\nconst markdownLine = lines.find(line => line.startsWith('markdown:'));\nconst markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n\nreturn [{\n  json: {\n    filePath: markdownPath,\n    mailCommand: `echo \"Aquí está el archivo con las noticias\" | mail -s \"ClaudeIA Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        -80
+      ],
+      "id": "61258c0a-6a17-4a6f-b71e-7c8ca8344306",
+      "name": "Filename extractor"
+    },
+    {
+      "parameters": {
+        "content": "## Failure\nIf anything fails ** error by telegram**",
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        736,
+        -432
+      ],
+      "typeVersion": 1,
+      "id": "8065245b-b55e-413b-9d8d-1cbf90a2b564",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "source .venv/bin/activate && ./reddit-analyzer digest --project claudeia --limit 7",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -80
+      ],
+      "id": "e4f20070-14ce-4e5f-b7a9-8fd8553224e1",
+      "name": "AI Python sentiment digester",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "source .venv/bin/activate && ./reddit-analyzer digest --project wineworld --limit 15",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        144
+      ],
+      "id": "aba84ab7-867e-43dc-a0b4-5166eafa494e",
+      "name": "Wine Python sentiment digester",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.mailCommand }}",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        192,
+        144
+      ],
+      "id": "eb24a0d1-b2c7-44ec-9757-fb3d779630e0",
+      "name": "Wine Mail executor",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract file path from markdown line\nconst stdout = $input.first().json.stdout || '';\nconst lines = stdout.trim().split('\\n');\n\nconst markdownLine = lines.find(line => line.startsWith('markdown:'));\nconst markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n\nreturn [{\n  json: {\n    filePath: markdownPath,\n    mailCommand: `echo \"Aquí está el archivo con las noticias sobre el mundo del vino\" | mail -s \"WineWorld Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        144
+      ],
+      "id": "33e78241-4881-4ae1-be76-f9b1b9eb182d",
+      "name": "Wine Filename extractor"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.mailCommand }}",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -80
+      ],
+      "id": "a8465af0-ecba-43fe-907f-3def053a3275",
+      "name": "Mail executor",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /data/ClaudeRedditor && ./scripts/deploy-web.sh",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -336
+      ],
+      "id": "904b4795-63d1-448c-8ab7-d4a931212d63",
+      "name": "site uploader",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cd /data/ClaudeRedditor && ./scripts/daily-scan.sh",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        -416,
+        -80
+      ],
+      "id": "584afef4-593f-41a9-b6aa-7edd09e57b19",
+      "name": "daily scan",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gazette",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -624,
+        272
+      ],
+      "id": "7c392112-85e1-4948-9748-5cad25e8d17c",
+      "name": "Webhook",
+      "webhookId": "ca80079a-f271-4ab4-be4d-4ca1752debc7"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=source .venv/bin/activate && ./reddit-analyzer podcast --project claudeia   --file /data/ClaudeRedditor/{{ $json.filePath }}   --output-dir /data/voice_rec/",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -272
+      ],
+      "id": "aa07886c-7995-4bb5-bcfa-9369e3920ffc",
+      "name": "notebooklm_exporter",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "815566372",
+        "text": "=Claude Gazette: \n{{ $json.message }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        576,
+        -272
+      ],
+      "id": "2187dce5-dd0d-4cad-bfbe-ae8f52b83c37",
+      "name": "Send a text message",
+      "webhookId": "a25db087-0919-4361-83a2-42d04808cb37",
+      "credentials": {
+        "telegramApi": {
+          "id": "6zQnoW92DIzCmR11",
+          "name": "LaBorrachaAlerting_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst stderr = $input.first().json.stderr || '';\nconst code = $input.first().json.code;\n\n// Limpiar stderr: quitar caracteres especiales de Rich\nconst cleanStderr = stderr\n  .replace(/[│╭╮╯╰─┬┴├┤┼]/g, '')  // Quitar caracteres de box drawing\n  .replace(/\\[.*?m/g, '')          // Quitar códigos ANSI\n  .replace(/❱/g, '>')              // Reemplazar flechas\n  .trim();\n\n// Construir mensaje\nlet message = '';\n\nif (code === 0) {\n  message = `✅ Podcast generado correctamente\\n\\n${stdout}`;\n} else {\n  message = `⚠️ Error al generar podcast\\n\\n${cleanStderr.slice(-1000)}`; // Limitar a ultimos 1000 caracteres\n}\n\nreturn [{ json: { message } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -272
+      ],
+      "id": "b83c3b58-b0fd-4386-bd6f-8b169e73a5a7",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {
+    "Trigger mañanero": [
+      {
+        "json": {
+          "timestamp": "2026-03-16T07:00:00.011+01:00",
+          "Readable date": "March 16th 2026, 7:00:00 am",
+          "Readable time": "7:00:00 am",
+          "Day of week": "Monday",
+          "Year": "2026",
+          "Month": "March",
+          "Day of month": "16",
+          "Hour": "07",
+          "Minute": "00",
+          "Second": "00",
+          "Timezone": "Europe/Madrid (UTC+01:00)"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Trigger mañanero": {
+      "main": [
+        [
+          {
+            "node": "Wine Python sentiment digester",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "daily scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filename extractor": {
+      "main": [
+        [
+          {
+            "node": "Mail executor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "notebooklm_exporter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Python sentiment digester": {
+      "main": [
+        [
+          {
+            "node": "Filename extractor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "site uploader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wine Python sentiment digester": {
+      "main": [
+        [
+          {
+            "node": "Wine Filename extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wine Filename extractor": {
+      "main": [
+        [
+          {
+            "node": "Wine Mail executor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail executor": {
+      "main": [
+        []
+      ]
+    },
+    "daily scan": {
+      "main": [
+        [
+          {
+            "node": "AI Python sentiment digester",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Wine Python sentiment digester",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "daily scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notebooklm_exporter": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedPerExecution": 240,
+    "errorWorkflow": "8Do_4hTqkLg3hphSMi3jw"
+  },
+  "versionId": "6286cb87-c679-4b99-b442-66908ded9801",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7d27834ec55cdc082d467aa5d99be5b299260987a60a514bec6862ba23ce7aeb"
+  },
+  "id": "Rr2G1bC1mLVWIETL",
+  "tags": []
+}

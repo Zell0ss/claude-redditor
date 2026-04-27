@@ -194,6 +194,10 @@ def podcast(
     # Resolve digest path and output filename
     if file:
         digest_path = Path(file)
+        if digest_path.is_dir():
+            rprint(f"[red]✗ Se esperaba un fichero pero se recibió un directorio: {file}[/red]")
+            rprint("[dim]Posible causa: el digest no se generó (¿créditos API agotados?)[/dim]")
+            raise typer.Exit(1)
         if not digest_path.exists():
             rprint(f"[red]✗ Fichero no encontrado: {file}[/red]")
             raise typer.Exit(1)
