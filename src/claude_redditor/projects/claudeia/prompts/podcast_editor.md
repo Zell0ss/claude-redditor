@@ -127,6 +127,11 @@ Aplica los descartes en este orden:
   
 El campo `"reason"` del descarte debe reflejar estas decisiones (clickbait, redundancia, poca densidad, no encaja, etc.).
 
+**Cobertura completa**: toda historia del input debe aparecer en
+`blocks` (si entra) o en `discarded` (si no entra). Ninguna historia
+puede quedar fuera de ambas listas. Si una historia aparece mencionada
+en `closing_themes` o en cualquier `angle`, debe estar también en `blocks`.
+
 ---
 
 ## 6. Estructura del episodio
