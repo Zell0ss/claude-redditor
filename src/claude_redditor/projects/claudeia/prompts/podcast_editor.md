@@ -66,7 +66,7 @@ vas a recibir un json con al menos estos campos para las decisiones:
         "tier9": [ "..."]
       },
       "tier_clusters": ["..."],// descripcion de los clusteres de noticias a los que pertenecen los tiers encontrados
-      "tier_score": nnn //adherencia a los tiers elegidos
+      "tier_scoring": nnn //adherencia a los tiers elegidos
       "article_body": "...", //cuerpo del artículo
       "radio_commentary": "...", //comentario del articulo
     },

@@ -47,8 +47,8 @@ app.add_typer(db.app, name="")
 # Add info commands at top level
 app.add_typer(info.app, name="")
 
-# Add podcast command at top level
-app.add_typer(podcast.app, name="")
+# Add podcast as subcommand group
+app.add_typer(podcast.app, name="podcast")
 
 
 def main():
