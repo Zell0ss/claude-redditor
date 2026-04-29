@@ -3,12 +3,14 @@
 ## Quick Context
 
 ```
-STATUS: ✅ Production | 9 CLI commands + bookmark subcommands | Multi-project | Multi-source | Multi-tags | Web viewer
+STATUS: ✅ Production | 9 CLI commands + bookmark + podcast subcommands | Multi-project | Multi-source | Multi-tags | Web viewer | Podcast pipeline (Editor + Guionista)
 
 FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON → Web(Astro)
+      Podcast: digest.json → [1.Editor] → episode.json → [2.Guionista] → dialog.json → [3-5. futuro]
 
 CLI: scan, compare, digest, config, init-db, history, cache-stats, regenerate-json
      bookmark show|add|list|done|status
+     podcast edit|script
 
 FILES:
 Root Level:
@@ -33,7 +35,9 @@ src/claude_redditor/
 │  ├─ bookmark.py      → bookmark show|add|list|done|status
 │  ├─ db.py            → init-db, history, cache-stats, regenerate-json
 │  ├─ info.py          → config, version (auto-discovers projects)
-│  └─ helpers.py       → Output formatting (Rich)
+│  ├─ helpers.py       → Output formatting (Rich)
+│  ├─ podcast.py       → podcast edit|script subcommands
+│  └─ podcast_helpers.py → Shared helpers: find_digest, load_prompt, call_and_parse, estimate_cost
 ├─ core/               → Core definitions
 │  ├─ enums.py         → CategoryEnum, RED_FLAG_PATTERNS, etc.
 │  └─ models.py        → Core data models
@@ -47,8 +51,8 @@ src/claude_redditor/
 │  └─ hackernews.py    → HackerNews scraper (Firebase)
 └─ projects/           → Self-contained project definitions
    ├─ claudeia/        → AI/LLM content (podcast)
-   │  ├─ config.yaml   → topic, subreddits, hn_keywords
-   │  └─ prompts/      → classify.md, digest.md, tagging.md
+   │  ├─ config.yaml   → topic, subreddits, hn_keywords, podcast.editor/script
+   │  └─ prompts/      → classify.md, digest.md, tagging.md, podcast_editor.md, podcast_script.md
    └─ wineworld/       → Wine industry (blog)
       ├─ config.yaml
       └─ prompts/      → classify.md, digest.md, tagging.md
@@ -65,9 +69,13 @@ web/                   → Astro static site for viewing digests
 
 Other Directories:
 ├─ outputs/            → Generated outputs (cache, classifications, digests, reports, web JSONs)
+│                          outputs/podcast/{stem}_episode.json  ← Editor output (Stage 1)
+│                          outputs/podcast/{stem}_dialog.json   ← Guionista output (Stage 2)
 ├─ scripts/            → Automation (daily-scan.sh, daily-digest.sh, deploy-web.sh, send-digest.sh)
 ├─ docs/               → HOW-TO-ADD-PROJECT.md, HOW-TO-DEPLOY.md
+│  └─ plans/           → Handover docs per session (2026-04-27-handover.md, 2026-04-29-handover.md)
 ├─ logs/               → Application logs (daily log files)
+│                          logs/podcast/edit_{date}.log + script_{date}.log (structured JSON, one entry/block)
 ├─ tests/              → Test files + fixtures
 └─ commenter_img/      → Branding/assets (commenter expressions)
 
@@ -118,6 +126,12 @@ cd web && npm run build  # Static build to web/dist/
 # Database
 ./reddit-analyzer init-db
 ./reddit-analyzer config
+
+# Podcast pipeline
+./reddit-analyzer podcast edit --project claudeia             # Stage 1: episode plan
+./reddit-analyzer podcast edit --project claudeia --dry-run  # Preview without saving
+./reddit-analyzer podcast script --project claudeia          # Stage 2: full dialog
+./reddit-analyzer podcast script --project claudeia --blocks 2,3 --force  # Regenerate subset of blocks
 ```
 
 ## Claude Code: End of Session Workflow
@@ -153,6 +167,10 @@ cd web && npm run build  # Static build to web/dist/
 | Regenerate JSONs | `cli/db.py` (regenerate-json command) |
 | Web viewer | `web/` (Astro + Tailwind) |
 | CLI output formatting | `cli/helpers.py` |
+| Podcast Editor stage | `cli/podcast.py` (edit cmd) + `projects/{name}/prompts/podcast_editor.md` |
+| Podcast Script stage | `cli/podcast.py` (script cmd) + `projects/{name}/prompts/podcast_script.md` |
+| Shared podcast helpers | `cli/podcast_helpers.py` |
+| Podcast config | `projects/{name}/config.yaml` → sección `podcast.editor` + `podcast.script` |
 
 ## Non-Obvious Design Decisions
 
@@ -179,6 +197,12 @@ cd web && npm run build  # Static build to web/dist/
 11. **Classifier handles API refusals**: If a batch is refused, retries with individual posts and skips problematic content
 
 12. **Category auto-correction**: Invalid LLM categories (discussion, news, etc.) are auto-mapped to valid ones (see `CATEGORY_CORRECTIONS` in classifier.py)
+
+13. **Podcast naming mirrors digest stem**: `claudeia_2026-04-27_01.json` → `_01_episode.json` → `_01_dialog.json`. Siempre derivar paths desde el digest stem.
+
+14. **Podcast pipeline es secuencial por diseño**: el Guionista llama a la API una vez por bloque; `previous_blocks_summary` se acumula en memoria dentro del run. No persiste entre ejecuciones.
+
+15. **Modelos del podcast configurables por proyecto** en `config.yaml → podcast.editor/script`. Editor: temp=0.4 (consistencia entre días). Guionista: temp=0.7 (variación creativa).
 
 ## Environment Variables
 
