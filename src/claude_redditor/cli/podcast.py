@@ -9,142 +9,84 @@ from pathlib import Path
 from typing import Optional
 
 import anthropic
-from anthropic.types import TextBlock, Usage
 import typer
-import yaml
 from rich import print as rprint
 from rich.panel import Panel
 from rich.table import Table
 
 from ..config import settings
-from ..projects import project_loader
-
-app = typer.Typer(
-    name="podcast",
-    help="Podcast pipeline commands",
+from .podcast_helpers import (
+    call_and_parse,
+    estimate_cost,
+    find_digest,
+    load_podcast_config,
+    load_prompt,
 )
 
+app = typer.Typer(name="podcast", help="Podcast pipeline commands")
 logger = logging.getLogger("clauderedditor")
 
-# Approximate pricing per million tokens
-_PRICING = {
-    "claude-opus-4-7": {"input": 15.0, "output": 75.0},
-    "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-    "claude-haiku-4-5": {"input": 0.80, "output": 4.0},
-}
+_LOG_DIR = Path("logs") / "podcast"
 
 
-def _find_digest(project: str, date_str: str) -> Path:
-    """Find the latest digest JSON for a given project and date."""
-    web_dir = settings.output_dir / "web"
-    matches = sorted(web_dir.glob(f"{project}_{date_str}_*.json"))
-    if not matches:
-        raise FileNotFoundError(
-            f"No digest found for {project}/{date_str}. "
-            f"Run 'digest --project {project}' first."
-        )
-    return matches[-1]
-
-
-def _load_podcast_config(project: str) -> dict:
-    """Load podcast section from project config.yaml."""
-    config_path = project_loader.projects_dir / project / "config.yaml"
-    if not config_path.exists():
-        raise FileNotFoundError(
-            f"Project '{project}' not found. "
-            f"Use 'reddit-analyzer config' to list available projects."
-        )
-    with open(config_path) as f:
-        data = yaml.safe_load(f)
-    cfg = data.get("podcast")
-    if not cfg:
-        raise ValueError(
-            f"No 'podcast' section in config for project '{project}'."
-        )
-    return cfg
-
-
-def _load_prompt(project: str, prompt_file: str) -> str:
-    """Load system prompt from project's prompts directory."""
-    path = project_loader.projects_dir / project / prompt_file
-    if not path.exists():
-        raise FileNotFoundError(f"Editor prompt not found: {path}")
-    return path.read_text(encoding="utf-8")
-
-
-def _strip_fences(text: str) -> str:
-    """Remove markdown code fences if the model wrapped the JSON."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        text = text.rsplit("```", 1)[0].strip()
-    return text
-
+# ---------------------------------------------------------------------------
+# Validators
+# ---------------------------------------------------------------------------
 
 def _validate_episode(data: dict) -> list[str]:
-    """Return list of missing required top-level keys."""
-    return sorted({"episode_title", "blocks", "discarded"} - set(data.keys()))
+    missing = sorted({"episode_title", "blocks", "discarded"} - set(data.keys()))
+    return [f"Missing keys: {missing}"] if missing else []
 
 
-def _call_and_parse(
-    client: anthropic.Anthropic,
-    system_prompt: str,
-    digest_content: str,
-    model: str,
-    temperature: float,
-    max_tokens: int,
-) -> tuple[dict, Usage, str]:
-    """Call API and parse/validate, retrying up to 3 times on any failure.
+def _validate_block(data: dict) -> list[str]:
+    missing = sorted({"turns", "block_summary"} - set(data.keys()))
+    if missing:
+        return [f"Missing keys: {missing}"]
+    errors = []
+    if not data["turns"]:
+        errors.append("'turns' is empty")
+    if not data.get("block_summary"):
+        errors.append("'block_summary' is empty")
+    bad_speakers = [
+        t.get("speaker") for t in data["turns"]
+        if t.get("speaker") not in ("javi", "marta")
+    ]
+    if bad_speakers:
+        errors.append(f"Invalid speakers: {bad_speakers}")
+    return errors
 
-    Returns (episode_dict, usage, message_id).
-    Retries on: API errors, JSON parse errors, missing required keys.
-    """
-    last_exc: Exception = RuntimeError("No attempts made")
-    for attempt in range(1, 4):
-        try:
-            resp = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system_prompt,
-                messages=[{"role": "user", "content": digest_content}],
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _write_log(log_file: Path, entry: dict) -> None:
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
+def _parse_blocks_arg(blocks_arg: str, total: int) -> list[int]:
+    """Parse --blocks value to 0-indexed list. 'all' → [0,1,...], '1,3' → [0,2]."""
+    if blocks_arg.strip() == "all":
+        return list(range(total))
+    try:
+        indices = [int(x.strip()) - 1 for x in blocks_arg.split(",")]
+    except ValueError:
+        raise ValueError(
+            f"Invalid --blocks value: '{blocks_arg}'. Use 'all' or numbers like '1,3'."
+        )
+    for idx in indices:
+        if idx < 0 or idx >= total:
+            raise ValueError(
+                f"Block {idx + 1} is out of range (episode has {total} blocks)."
             )
-            block = resp.content[0]
-            if not isinstance(block, TextBlock):
-                raise ValueError(f"Unexpected response block type: {type(block).__name__}")
-            episode = json.loads(_strip_fences(block.text))
-            missing = _validate_episode(episode)
-            if missing:
-                raise ValueError(f"Response missing required keys: {missing}")
-            return episode, resp.usage, resp.id
-        except (anthropic.APIError, json.JSONDecodeError, ValueError) as exc:
-            last_exc = exc
-            if attempt < 3:
-                wait = 2 ** attempt
-                rprint(
-                    f"[yellow]Attempt {attempt}/3 failed "
-                    f"({type(exc).__name__}), retrying in {wait}s: {exc}[/yellow]"
-                )
-                time.sleep(wait)
-    raise last_exc
+    return indices
 
 
-def _estimate_cost(usage: Usage, model: str) -> str:
-    """Return human-readable cost estimate string."""
-    pricing = _PRICING.get(model)
-    if not pricing:
-        for key, val in _PRICING.items():
-            if model.startswith(key):
-                pricing = val
-                break
-    if not pricing:
-        return f"{usage.input_tokens:,} in + {usage.output_tokens:,} out (pricing unknown)"
-    total = (
-        (usage.input_tokens / 1_000_000) * pricing["input"]
-        + (usage.output_tokens / 1_000_000) * pricing["output"]
-    )
-    return f"~${total:.4f} ({usage.input_tokens:,} in + {usage.output_tokens:,} out)"
-
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
 
 @app.command("edit")
 def edit(
@@ -171,9 +113,8 @@ def edit(
     date_str = date or date_type.today().isoformat()
     t0 = time.monotonic()
 
-    # Load project podcast config
     try:
-        podcast_cfg = _load_podcast_config(project)
+        podcast_cfg = load_podcast_config(project)
     except (FileNotFoundError, ValueError) as exc:
         rprint(f"[red]✗ {exc}[/red]")
         raise typer.Exit(1)
@@ -184,34 +125,28 @@ def edit(
     max_tokens = int(editor_cfg.get("max_tokens", 8000))
     prompt_file = editor_cfg.get("prompt_file", "prompts/podcast_editor.md")
 
-    # Find digest
     try:
-        digest_path = _find_digest(project, date_str)
+        digest_path = find_digest(project, date_str)
     except FileNotFoundError as exc:
         rprint(f"[red]✗ {exc}[/red]")
         raise typer.Exit(1)
 
-    # Output path mirrors digest name
     output_dir = settings.output_dir / "podcast"
     output_path = output_dir / f"{digest_path.stem}_episode.json"
 
-    # Guard: don't overwrite unless --force (irrelevant in dry-run)
     if not dry_run and output_path.exists() and not force:
         rprint(f"[red]✗ Episode plan already exists for this date: {output_path}[/red]")
         rprint("[dim]Use --force to overwrite.[/dim]")
         raise typer.Exit(1)
 
-    # Load prompt
     try:
-        system_prompt = _load_prompt(project, prompt_file)
+        system_prompt = load_prompt(project, prompt_file)
     except FileNotFoundError as exc:
         rprint(f"[red]✗ {exc}[/red]")
         raise typer.Exit(1)
 
-    # Read digest
     digest_data = json.loads(digest_path.read_text(encoding="utf-8"))
     story_count = len(digest_data.get("stories", []))
-    digest_str = json.dumps(digest_data, ensure_ascii=False)
 
     rprint(f"\n[bold cyan]Podcast Editor — {project} / {date_str}[/bold cyan]")
     rprint(f"[dim]Digest: {digest_path.name} ({story_count} stories)[/dim]")
@@ -220,27 +155,26 @@ def edit(
         rprint(f"[dim]Output: {output_path} (dry run — will not be saved)[/dim]")
     rprint()
 
-    # Call Claude
     rprint("[cyan]Calling Claude editor...[/cyan]")
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     try:
-        episode, usage, msg_id = _call_and_parse(
-            client, system_prompt, digest_str, model, temperature, max_tokens
+        episode, usage, msg_id = call_and_parse(
+            client, system_prompt,
+            json.dumps(digest_data, ensure_ascii=False),
+            model, temperature, max_tokens,
+            _validate_episode,
         )
     except (anthropic.APIError, json.JSONDecodeError, ValueError) as exc:
-        logger.error(
-            "podcast_edit failed project=%s date=%s error=%s", project, date_str, exc
-        )
+        logger.error("podcast_edit failed project=%s date=%s error=%s", project, date_str, exc)
         rprint(f"\n[red]✗ Failed after 3 attempts: {exc}[/red]")
         raise typer.Exit(1)
 
     elapsed = time.monotonic() - t0
-    cost_str = _estimate_cost(usage, model)
+    cost_str = estimate_cost(usage.input_tokens, usage.output_tokens, model)
     blocks = episode.get("blocks", [])
     discarded = episode.get("discarded", [])
 
-    # Dry run: print JSON and exit without saving
     if dry_run:
         rprint(Panel(
             json.dumps(episode, indent=2, ensure_ascii=False),
@@ -250,44 +184,27 @@ def edit(
         rprint(f"[dim]Tokens: {cost_str} | {elapsed:.1f}s[/dim]")
         raise typer.Exit(0)
 
-    # Save
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(episode, indent=2, ensure_ascii=False), encoding="utf-8"
+    output_path.write_text(json.dumps(episode, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    _write_log(
+        _LOG_DIR / f"edit_{date_str}.log",
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "project": project, "date": date_str,
+            "digest": digest_path.name, "model": model, "msg_id": msg_id,
+            "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+            "elapsed_s": round(elapsed, 2),
+            "blocks": len(blocks), "discarded": len(discarded),
+            "output": str(output_path), "success": True,
+        },
     )
-
-    # Structured log
-    log_dir = Path("logs") / "podcast"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "project": project,
-        "date": date_str,
-        "digest": digest_path.name,
-        "model": model,
-        "msg_id": msg_id,
-        "input_tokens": usage.input_tokens,
-        "output_tokens": usage.output_tokens,
-        "elapsed_s": round(elapsed, 2),
-        "blocks": len(blocks),
-        "discarded": len(discarded),
-        "output": str(output_path),
-        "success": True,
-    }
-    log_file = log_dir / f"edit_{date_str}.log"
-    with open(log_file, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(log_entry) + "\n")
-
     logger.info(
         "podcast_edit success project=%s date=%s blocks=%d tokens=%d+%d",
         project, date_str, len(blocks), usage.input_tokens, usage.output_tokens,
     )
 
-    # Summary table
-    table = Table(
-        title=f"[bold]{episode.get('episode_title', '')}[/bold]",
-        show_header=True,
-    )
+    table = Table(title=f"[bold]{episode.get('episode_title', '')}[/bold]", show_header=True)
     table.add_column("Block", style="cyan", no_wrap=True)
     table.add_column("Theme")
     table.add_column("Stories", justify="center")
@@ -317,5 +234,251 @@ def edit(
         f"Tokens:  {cost_str}\n"
         f"Time:    {elapsed:.1f}s",
         title="[bold green]podcast edit — done[/bold green]",
+        expand=False,
+    ))
+
+
+@app.command("script")
+def script(
+    project: str = typer.Option(..., "--project", "-p", help="Project name (e.g. 'claudeia')"),
+    date: Optional[str] = typer.Option(None, "--date", help="Digest date YYYY-MM-DD (default: today)"),
+    digest_id: Optional[str] = typer.Option(None, "--digest-id", help="Digest sequence ID (e.g. '01')"),
+    force: bool = typer.Option(False, "--force", help="Overwrite output if it already exists"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Run everything but don't save"),
+    blocks_arg: str = typer.Option("all", "--blocks", help="Blocks to process: 'all' or '1,3'"),
+):
+    """
+    Run the Script stage: read episode plan → call Claude per block → save dialog.
+
+    Generates the full dialogue block by block and writes
+    outputs/podcast/{digest_stem}_dialog.json.
+
+    previous_blocks_summary is accumulated within the run only.
+    Use --blocks to regenerate a subset; earlier-block context won't be available.
+
+    \\b
+    Examples:
+
+        reddit-analyzer podcast script --project claudeia
+
+        reddit-analyzer podcast script --project claudeia --date 2026-04-24
+
+        reddit-analyzer podcast script --project claudeia --blocks 2,3 --force
+    """
+    date_str = date or date_type.today().isoformat()
+    t0 = time.monotonic()
+
+    # Load config
+    try:
+        podcast_cfg = load_podcast_config(project)
+    except (FileNotFoundError, ValueError) as exc:
+        rprint(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1)
+
+    script_cfg = podcast_cfg.get("script", {})
+    model = script_cfg.get("model", "claude-sonnet-4-6")
+    temperature = float(script_cfg.get("temperature", 0.7))
+    max_tokens = int(script_cfg.get("max_tokens", 8000))
+    prompt_file = script_cfg.get("prompt_file", "prompts/podcast_script.md")
+
+    # Find digest and derive all paths from its stem
+    try:
+        digest_path = find_digest(project, date_str, digest_id)
+    except FileNotFoundError as exc:
+        rprint(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1)
+
+    podcast_dir = settings.output_dir / "podcast"
+    episode_path = podcast_dir / f"{digest_path.stem}_episode.json"
+    dialog_path = podcast_dir / f"{digest_path.stem}_dialog.json"
+
+    if not episode_path.exists():
+        rprint(f"[red]✗ Episode plan not found: {episode_path}[/red]")
+        rprint(f"[dim]Run 'podcast edit --project {project}' first.[/dim]")
+        raise typer.Exit(1)
+
+    if not dry_run and dialog_path.exists() and not force:
+        rprint(f"[red]✗ Dialog already exists: {dialog_path}[/red]")
+        rprint("[dim]Use --force to overwrite.[/dim]")
+        raise typer.Exit(1)
+
+    # Load prompt
+    try:
+        system_prompt = load_prompt(project, prompt_file)
+    except FileNotFoundError as exc:
+        rprint(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1)
+
+    # Load episode plan + digest stories
+    episode = json.loads(episode_path.read_text(encoding="utf-8"))
+    digest_data = json.loads(digest_path.read_text(encoding="utf-8"))
+    stories_by_id = {s["id"]: s for s in digest_data.get("stories", [])}
+
+    all_blocks = episode.get("blocks", [])
+    if not all_blocks:
+        rprint(f"[red]✗ Episode plan has no blocks: {episode_path}[/red]")
+        raise typer.Exit(1)
+
+    # Parse --blocks
+    try:
+        block_indices = _parse_blocks_arg(blocks_arg, len(all_blocks))
+    except ValueError as exc:
+        rprint(f"[red]✗ {exc}[/red]")
+        raise typer.Exit(1)
+
+    rprint(f"\n[bold cyan]Podcast Script — {project} / {date_str}[/bold cyan]")
+    rprint(f"[dim]Episode: {episode_path.name} | {len(block_indices)}/{len(all_blocks)} blocks[/dim]")
+    rprint(f"[dim]Model:   {model}[/dim]")
+    if dry_run:
+        rprint(f"[dim]Output:  {dialog_path} (dry run — will not be saved)[/dim]")
+    rprint()
+
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    log_file = _LOG_DIR / f"script_{date_str}.log"
+
+    previous_summaries: list[str] = []
+    processed_blocks: list[dict] = []
+    total_input = 0
+    total_output = 0
+
+    per_block_table = Table(show_header=True)
+    per_block_table.add_column("Block", style="cyan", no_wrap=True)
+    per_block_table.add_column("Theme", max_width=38)
+    per_block_table.add_column("Turns", justify="center")
+    per_block_table.add_column("~Min", justify="right")
+    per_block_table.add_column("Tokens", justify="right")
+
+    for idx in block_indices:
+        block_plan = all_blocks[idx]
+        block_id = block_plan.get("id", f"block_{idx + 1}")
+        theme = block_plan.get("theme", "")
+
+        # Build filtered story list for this block
+        block_stories = []
+        for sid in block_plan.get("story_ids", []):
+            s = stories_by_id.get(sid)
+            if s:
+                block_stories.append({
+                    "id": s["id"],
+                    "title": s.get("title", ""),
+                    "source": s.get("source", ""),
+                    "article_body": s.get("article_body", ""),
+                    "tier_clusters": s.get("tier_clusters"),
+                    "tier_tags": s.get("tier_tags"),
+                    "red_flags": s.get("red_flags", []),
+                    "score": s.get("score"),
+                    "num_comments": s.get("num_comments"),
+                })
+
+        block_input = {
+            "theme": theme,
+            "angle": block_plan.get("angle", ""),
+            "tension_axis": block_plan.get("tension_axis", ""),
+            "target_minutes": block_plan.get("target_minutes", 5),
+            "stories": block_stories,
+            "previous_blocks_summary": previous_summaries.copy(),
+        }
+
+        rprint(f"[cyan]  Generating {block_id} ({theme[:50]})...[/cyan]")
+        t_block = time.monotonic()
+
+        try:
+            block_data, usage, msg_id = call_and_parse(
+                client,
+                system_prompt,
+                json.dumps(block_input, ensure_ascii=False),
+                model, temperature, max_tokens,
+                _validate_block,
+            )
+        except (anthropic.APIError, json.JSONDecodeError, ValueError) as exc:
+            logger.error(
+                "podcast_script failed project=%s date=%s block=%s error=%s",
+                project, date_str, block_id, exc,
+            )
+            rprint(f"\n[red]✗ {block_id} failed after 3 attempts — aborting: {exc}[/red]")
+            raise typer.Exit(1)
+
+        block_elapsed = time.monotonic() - t_block
+        turns = block_data["turns"]
+        words = sum(len(t["text"].split()) for t in turns)
+        est_min = round(words / 150, 1)
+
+        # Accumulate context for next block
+        previous_summaries.append(
+            f"Bloque {idx + 1} ({theme}): {block_data['block_summary']}"
+        )
+        processed_blocks.append({
+            "block_id": block_id,
+            "block_summary": block_data["block_summary"],
+            "turns": turns,
+        })
+        total_input += usage.input_tokens
+        total_output += usage.output_tokens
+
+        _write_log(log_file, {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "project": project, "date": date_str, "block": block_id,
+            "model": model, "msg_id": msg_id,
+            "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+            "turns": len(turns), "est_min": est_min,
+            "elapsed_s": round(block_elapsed, 2),
+        })
+
+        per_block_table.add_row(
+            block_id,
+            theme[:38],
+            str(len(turns)),
+            str(est_min),
+            f"{usage.input_tokens:,}+{usage.output_tokens:,}",
+        )
+
+    elapsed = time.monotonic() - t0
+    total_words = sum(
+        len(t["text"].split()) for b in processed_blocks for t in b["turns"]
+    )
+    total_est_min = round(total_words / 150, 1)
+    cost_str = estimate_cost(total_input, total_output, model)
+
+    # Assemble dialog
+    dialog = {
+        "episode_id": digest_path.stem,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "blocks": processed_blocks,
+    }
+
+    if dry_run:
+        rprint(per_block_table)
+        rprint(Panel(
+            json.dumps(dialog, indent=2, ensure_ascii=False),
+            title="[cyan]Dialog (dry run — not saved)[/cyan]",
+            expand=False,
+        ))
+        rprint(f"[dim]Total: ~{total_est_min} min | {cost_str} | {elapsed:.1f}s[/dim]")
+        raise typer.Exit(0)
+
+    # Save
+    podcast_dir.mkdir(parents=True, exist_ok=True)
+    dialog_path.write_text(json.dumps(dialog, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    _write_log(log_file, {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "project": project, "date": date_str, "summary": True,
+        "total_input_tokens": total_input, "total_output_tokens": total_output,
+        "total_est_min": total_est_min, "elapsed_s": round(elapsed, 2),
+        "output": str(dialog_path), "success": True,
+    })
+    logger.info(
+        "podcast_script success project=%s date=%s blocks=%d tokens=%d+%d",
+        project, date_str, len(processed_blocks), total_input, total_output,
+    )
+
+    rprint(per_block_table)
+    rprint(Panel(
+        f"[green]✓ Dialog saved[/green]\n\n"
+        f"File:    {dialog_path}\n"
+        f"Blocks:  {len(processed_blocks)} | ~{total_est_min} min estimated\n"
+        f"Tokens:  {cost_str}\n"
+        f"Time:    {elapsed:.1f}s",
+        title="[bold green]podcast script — done[/bold green]",
         expand=False,
     ))
