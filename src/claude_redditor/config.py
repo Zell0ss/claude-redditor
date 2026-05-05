@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5-20251001"
 
+    # Deepgram TTS (required for podcast audio)
+    deepgram_api_key: str = ""
+
     # HackerNews fetch limit
     hn_fetch_limit: int = 100
 

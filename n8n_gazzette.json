@@ -7,10 +7,6 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 7 * * *"
-            },
-            {
-              "field": "cronExpression",
               "expression": "0 6 * * *"
             }
           ]
@@ -55,7 +51,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract file path from markdown line\nconst stdout = $input.first().json.stdout || '';\nconst lines = stdout.trim().split('\\n');\n\nconst markdownLine = lines.find(line => line.startsWith('markdown:'));\nconst markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n\nreturn [{\n  json: {\n    filePath: markdownPath,\n    mailCommand: `echo \"Aquí está el archivo con las noticias\" | mail -s \"ClaudeIA Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n  }\n}];\n"
+        "jsCode": "return (() => {\n  const raw = $input.first().json.stdout || '';\n  const outputLines = raw.trim().split('\\n');\n\n  const markdownLine = outputLines.find(l => l.startsWith('markdown:'));\n  const markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n  const filename = markdownPath.split('/').pop() || '';\n  const m = filename.match(/_(\\d{4}-\\d{2}-\\d{2})_(\\d+)/);\n  const episodeDate = m ? m[1] : '';\n  const digestId = m ? m[2] : '01';\n\n  return [{\n    json: {\n      filePath: markdownPath,\n      date: episodeDate,\n      digestId,\n      mailCommand: `echo \"Aquí está el archivo con las noticias\" | mail -s \"ClaudeIA Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n    }\n  }];\n})();"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -238,7 +234,7 @@
     {
       "parameters": {
         "authentication": "privateKey",
-        "command": "=source .venv/bin/activate && ./reddit-analyzer podcast --project claudeia   --file /data/ClaudeRedditor/{{ $json.filePath }}   --output-dir /data/voice_rec/",
+        "command": "source .venv/bin/activate && ./reddit-analyzer podcast edit --project claudeia --date {{ $json.date }} && ./reddit-analyzer podcast script --project claudeia --date {{ $json.date }} && ./reddit-analyzer podcast audio --project claudeia --date {{ $json.date }}",
         "cwd": "/data/ClaudeRedditor"
       },
       "type": "n8n-nodes-base.ssh",
@@ -454,7 +450,7 @@
     "timeSavedPerExecution": 240,
     "errorWorkflow": "8Do_4hTqkLg3hphSMi3jw"
   },
-  "versionId": "6286cb87-c679-4b99-b442-66908ded9801",
+  "versionId": "6df00337-ab99-46b6-9105-df480fe38b8c",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "7d27834ec55cdc082d467aa5d99be5b299260987a60a514bec6862ba23ce7aeb"

@@ -3,10 +3,10 @@
 ## Quick Context
 
 ```
-STATUS: ✅ Production | 9 CLI commands + bookmark + podcast subcommands | Multi-project | Multi-source | Multi-tags | Web viewer | Podcast pipeline (Editor + Guionista)
+STATUS: ✅ Production | 9 CLI commands + bookmark + podcast subcommands | Multi-project | Multi-source | Multi-tags | Web viewer | Podcast pipeline (Editor + Guionista + Intro/Outro)
 
 FLOW: Scraper(Reddit/HN) → Cache(MariaDB) → Classifier(Claude) → Analyzer → Reporter/Digest/JSON → Web(Astro)
-      Podcast: digest.json → [1.Editor] → episode.json → [2.Guionista] → dialog.json → [3-5. futuro]
+      Podcast: digest.json → [1.Editor] → episode.json → [2.Guionista + 3.Intro/Outro] → dialog.json → [4-5. futuro]
 
 CLI: scan, compare, digest, config, init-db, history, cache-stats, regenerate-json
      bookmark show|add|list|done|status
@@ -51,8 +51,8 @@ src/claude_redditor/
 │  └─ hackernews.py    → HackerNews scraper (Firebase)
 └─ projects/           → Self-contained project definitions
    ├─ claudeia/        → AI/LLM content (podcast)
-   │  ├─ config.yaml   → topic, subreddits, hn_keywords, podcast.editor/script
-   │  └─ prompts/      → classify.md, digest.md, tagging.md, podcast_editor.md, podcast_script.md
+   │  ├─ config.yaml   → topic, subreddits, hn_keywords, podcast.editor/script/intro_outro
+   │  └─ prompts/      → classify.md, digest.md, tagging.md, podcast_editor.md, podcast_script.md, podcast_intro_outro.md
    └─ wineworld/       → Wine industry (blog)
       ├─ config.yaml
       └─ prompts/      → classify.md, digest.md, tagging.md
@@ -70,10 +70,10 @@ web/                   → Astro static site for viewing digests
 Other Directories:
 ├─ outputs/            → Generated outputs (cache, classifications, digests, reports, web JSONs)
 │                          outputs/podcast/{stem}_episode.json  ← Editor output (Stage 1)
-│                          outputs/podcast/{stem}_dialog.json   ← Guionista output (Stage 2)
+│                          outputs/podcast/{stem}_dialog.json   ← Guionista+Intro/Outro output (Stages 2+3)
 ├─ scripts/            → Automation (daily-scan.sh, daily-digest.sh, deploy-web.sh, send-digest.sh)
 ├─ docs/               → HOW-TO-ADD-PROJECT.md, HOW-TO-DEPLOY.md
-│  └─ plans/           → Handover docs per session (2026-04-27-handover.md, 2026-04-29-handover.md)
+│  └─ plans/           → Handover docs per session (2026-04-27-handover.md, 2026-04-29-handover.md, 2026-05-04-handover.md)
 ├─ logs/               → Application logs (daily log files)
 │                          logs/podcast/edit_{date}.log + script_{date}.log (structured JSON, one entry/block)
 ├─ tests/              → Test files + fixtures
@@ -130,8 +130,11 @@ cd web && npm run build  # Static build to web/dist/
 # Podcast pipeline
 ./reddit-analyzer podcast edit --project claudeia             # Stage 1: episode plan
 ./reddit-analyzer podcast edit --project claudeia --dry-run  # Preview without saving
-./reddit-analyzer podcast script --project claudeia          # Stage 2: full dialog
-./reddit-analyzer podcast script --project claudeia --blocks 2,3 --force  # Regenerate subset of blocks
+./reddit-analyzer podcast script --project claudeia          # Stages 2+3: full dialog + intro/outro
+./reddit-analyzer podcast script --project claudeia --dry-run                # Preview without saving
+./reddit-analyzer podcast script --project claudeia --blocks 2,3 --force    # Regenerate subset (skips intro/outro)
+./reddit-analyzer podcast audio --project claudeia           # Stages 4+5: MP3 via Deepgram TTS
+./reddit-analyzer podcast audio --project claudeia --date 2026-04-27 --digest-id 01  # Specific episode
 ```
 
 ## Claude Code: End of Session Workflow
@@ -169,8 +172,10 @@ cd web && npm run build  # Static build to web/dist/
 | CLI output formatting | `cli/helpers.py` |
 | Podcast Editor stage | `cli/podcast.py` (edit cmd) + `projects/{name}/prompts/podcast_editor.md` |
 | Podcast Script stage | `cli/podcast.py` (script cmd) + `projects/{name}/prompts/podcast_script.md` |
+| Podcast Intro/Outro stage | `cli/podcast.py` (script cmd, tras bloques) + `projects/{name}/prompts/podcast_intro_outro.md` |
+| Podcast Audio stage | `cli/podcast.py` (audio cmd) + Deepgram TTS API |
 | Shared podcast helpers | `cli/podcast_helpers.py` |
-| Podcast config | `projects/{name}/config.yaml` → sección `podcast.editor` + `podcast.script` |
+| Podcast config | `projects/{name}/config.yaml` → sección `podcast.editor` + `podcast.script` + `podcast.intro_outro` |
 
 ## Non-Obvious Design Decisions
 
@@ -202,7 +207,29 @@ cd web && npm run build  # Static build to web/dist/
 
 14. **Podcast pipeline es secuencial por diseño**: el Guionista llama a la API una vez por bloque; `previous_blocks_summary` se acumula en memoria dentro del run. No persiste entre ejecuciones.
 
-15. **Modelos del podcast configurables por proyecto** en `config.yaml → podcast.editor/script`. Editor: temp=0.4 (consistencia entre días). Guionista: temp=0.7 (variación creativa).
+15. **Modelos del podcast configurables por proyecto** en `config.yaml → podcast.editor/script/intro_outro`. Editor: temp=0.4 (consistencia entre días). Guionista e Intro/Outro: temp=0.7 (variación creativa).
+
+16. **Intro/Outro es parte de `podcast script`, no un subcomando aparte**: se genera automáticamente después del bucle de bloques (Etapa 3). Si se usa `--blocks` con subset, se salta con aviso y los campos quedan `null` en el dialog.json.
+
+17. **dialog.json schema completo**:
+    ```json
+    {
+      "episode_id": "claudeia_2026-04-27_01",   // identidad, incluye sufijo _01
+      "episode_title": "...",                    // copia del episode.json, conveniencia
+      "generated_at": "2026-04-27T08:00:00Z",
+      "intro": {                                 // null si falló o --blocks parcial
+        "turns": [{"speaker": "javi"|"marta", "text": "...", "pause_after_ms": 0|300|700, "emphasis": [...]}]
+      },
+      "blocks": [
+        {"block_id": "block_1", "block_summary": "...", "turns": [...]}
+      ],
+      "outro": { "turns": [...] }               // null si falló o --blocks parcial
+    }
+    ```
+
+18. **`pause_after_ms` reservado para SSML futuro**: valores `0/300/700ms` están en todos los turns del dialog.json pero `podcast audio` los ignora en v1 (concatenación directa). Cuando Deepgram soporte SSML o se use TTS alternativo, convertir a `<break time="300ms"/>` o clips de silencio intercalados.
+
+19. **`podcast audio` usa `--digest-id`** igual que `podcast script`, para desambiguar cuando hay varios episodios en un mismo día. Sin él, coge el último por orden alfabético.
 
 ## Environment Variables
 
@@ -219,6 +246,9 @@ MYSQL_DATABASE=reddit_analyzer
 # Optional (enables PRAW mode for Reddit - faster)
 REDDIT_CLIENT_ID=...
 REDDIT_CLIENT_SECRET=...
+
+# Required for podcast audio (Deepgram TTS)
+DEEPGRAM_API_KEY=...
 ```
 
 Note: Project configuration (subreddits, topics, keywords) is now in `src/claude_redditor/projects/{name}/config.yaml`, not in `.env`.

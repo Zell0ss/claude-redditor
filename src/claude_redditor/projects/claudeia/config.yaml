@@ -31,3 +31,10 @@ podcast:
     temperature: 0.7
     max_tokens: 8000
     prompt_file: "prompts/podcast_script.md"
+  intro_outro:
+    model: "claude-sonnet-4-6"
+    temperature: 0.7
+    max_tokens: 4000
+    prompt_file: "prompts/podcast_intro_outro.md"
+  audio:
+    speed: 1.2

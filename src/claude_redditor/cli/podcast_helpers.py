@@ -7,6 +7,7 @@ from typing import Callable
 
 import anthropic
 from anthropic.types import TextBlock, Usage
+import httpx
 import yaml
 from rich import print as rprint
 
@@ -40,6 +41,30 @@ def find_digest(project: str, date_str: str, digest_id: str | None = None) -> Pa
         raise FileNotFoundError(
             f"No digest found for {project}/{date_str}. "
             f"Run 'digest --project {project}' first."
+        )
+    return matches[-1]
+
+
+def find_dialog(project: str, date_str: str, digest_id: str | None = None) -> Path:
+    """Find dialog JSON for a project and date.
+
+    If digest_id given (e.g. '01'), looks for the exact file.
+    Otherwise returns the latest match for that date.
+    """
+    podcast_dir = settings.output_dir / "podcast"
+    if digest_id:
+        path = podcast_dir / f"{project}_{date_str}_{digest_id}_dialog.json"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Dialog not found: {path}. "
+                f"Run 'podcast script --project {project}' first."
+            )
+        return path
+    matches = sorted(podcast_dir.glob(f"{project}_{date_str}_*_dialog.json"))
+    if not matches:
+        raise FileNotFoundError(
+            f"No dialog found for {project}/{date_str}. "
+            f"Run 'podcast script --project {project}' first."
         )
     return matches[-1]
 
@@ -90,6 +115,40 @@ def estimate_cost(input_tokens: int, output_tokens: int, model: str) -> str:
     total = (input_tokens / 1_000_000) * pricing["input"] + \
             (output_tokens / 1_000_000) * pricing["output"]
     return f"~${total:.4f} ({input_tokens:,} in + {output_tokens:,} out)"
+
+
+_DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak"
+
+
+def call_deepgram_tts(text: str, model: str, api_key: str, speed: float = 1.0) -> bytes:
+    """Call Deepgram Aura-2 TTS API and return raw MP3 bytes."""
+    response = httpx.post(
+        _DEEPGRAM_TTS_URL,
+        params={"model": model, "speed": speed},
+        headers={
+            "Authorization": f"Token {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={"text": text},
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return response.content
+
+
+def extract_ordered_turns(dialog: dict) -> list[dict]:
+    """Return all turns in playback order: intro → blocks → outro.
+
+    Skips intro/outro silently if they are null (failed or partial run).
+    """
+    turns: list[dict] = []
+    if dialog.get("intro") and dialog["intro"].get("turns"):
+        turns.extend(dialog["intro"]["turns"])
+    for block in dialog.get("blocks", []):
+        turns.extend(block.get("turns", []))
+    if dialog.get("outro") and dialog["outro"].get("turns"):
+        turns.extend(dialog["outro"]["turns"])
+    return turns
 
 
 def call_and_parse(
