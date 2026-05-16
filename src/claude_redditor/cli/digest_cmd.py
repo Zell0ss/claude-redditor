@@ -156,9 +156,9 @@ def digest(
         for fmt, path in output_paths:
             rprint(f"[dim]{fmt}: {path}[/dim]")
 
-        # Print paths for N8N to capture
-        for _, path in output_paths:
-            print(f"\n{path}")
+        # Print paths for N8N to capture (machine-readable, no ANSI)
+        for fmt, path in output_paths:
+            print(f"{fmt}: {path}")
 
     except typer.Exit:
         raise  # Re-raise typer.Exit without catching it
