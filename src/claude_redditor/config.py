@@ -50,8 +50,8 @@ class Settings(BaseSettings):
 
     # Paths
     output_dir: Path = Path("outputs")
-    cache_dir: Path = Path("outputs/cache")
-    classifications_dir: Path = Path("outputs/classifications")
+    # cache_dir: Path = Path("outputs/cache")              # legacy - migrado a MariaDB
+    # classifications_dir: Path = Path("outputs/classifications")  # legacy - migrado a MariaDB
     reports_dir: Path = Path("outputs/reports")
 
     model_config = SettingsConfigDict(
@@ -71,8 +71,6 @@ class Settings(BaseSettings):
     def ensure_directories(self) -> None:
         """Create output directories if they don't exist."""
         self.output_dir.mkdir(exist_ok=True)
-        self.cache_dir.mkdir(exist_ok=True)
-        self.classifications_dir.mkdir(exist_ok=True)
         self.reports_dir.mkdir(exist_ok=True)
 
 

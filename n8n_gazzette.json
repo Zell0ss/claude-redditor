@@ -51,12 +51,12 @@
     },
     {
       "parameters": {
-        "jsCode": "return (() => {\n  const raw = $input.first().json.stdout || '';\n  const outputLines = raw.trim().split('\\n');\n\n  const markdownLine = outputLines.find(l => l.startsWith('markdown:'));\n  const markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n  const filename = markdownPath.split('/').pop() || '';\n  const m = filename.match(/_(\\d{4}-\\d{2}-\\d{2})_(\\d+)/);\n  const episodeDate = m ? m[1] : '';\n  const digestId = m ? m[2] : '01';\n\n  return [{\n    json: {\n      filePath: markdownPath,\n      date: episodeDate,\n      digestId,\n      mailCommand: `echo \"Aquí está el archivo con las noticias\" | mail -s \"ClaudeIA Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n    }\n  }];\n})();"
+        "jsCode": "  // Extract file path and date from digest output\n  return (() => {\n    const raw = $input.first().json.stdout || '';\n    const outputLines = raw.trim().split('\\n');\n\n    // Detectar error de créditos API o fallo de generación\n    const hasApiError = raw.includes('reached your specified API usage limits') ||\n                        raw.includes('Failed to generate any articles');\n\n    if (hasApiError) {\n      const dateMatch = raw.match(/regain access on (\\d{4}-\\d{2}-\\d{2})/);\n      const regainDate = dateMatch ? dateMatch[1] : '?';\n      return [{\n        json: {\n          hasError: true,\n          errorMessage: '⛔ ClaudeIA Gazette: API sin créditos. Acceso restaurado: ' + regainDate,\n          filePath: '', date: '', digestId: '', mailCommand: ''\n        }\n      }];\n    }\n\n    const markdownLine = outputLines.find(l => l.startsWith('markdown:'));\n    const markdownPath = markdownLine ? markdownLine.replace('markdown:', '').trim() : '';\n\n    if (!markdownPath) {\n      return [{\n        json: {\n          hasError: true,\n          errorMessage: '⚠️  ClaudeIA Gazette: digest no generó ningún fichero',\n          filePath: '', date: '', digestId: '', mailCommand: ''\n        }\n      }];\n    }\n\n    const filename = markdownPath.split('/').pop() || '';\n    const m = filename.match(/_(\\d{4}-\\d{2}-\\d{2})_(\\d+)/);\n    const episodeDate = m ? m[1] : '';\n    const digestId = m ? m[2] : '01';\n\n    return [{\n      json: {\n        hasError: false,\n        errorMessage: '',\n        filePath: markdownPath,\n        date: episodeDate,\n        digestId,\n        mailCommand: `echo \"Aquí está el archivo con las noticias\" | mail -s \"ClaudeIA Gazzette\" -A /data/ClaudeRedditor/${markdownPath} zelloss@gmail.com`\n      }\n    }];\n  })();"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -32,
+        -80,
         -80
       ],
       "id": "61258c0a-6a17-4a6f-b71e-7c8ca8344306",
@@ -161,8 +161,8 @@
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
       "position": [
-        192,
-        -80
+        352,
+        -64
       ],
       "id": "a8465af0-ecba-43fe-907f-3def053a3275",
       "name": "Mail executor",
@@ -233,27 +233,6 @@
     },
     {
       "parameters": {
-        "authentication": "privateKey",
-        "command": "source .venv/bin/activate && ./reddit-analyzer podcast edit --project claudeia --date {{ $json.date }} && ./reddit-analyzer podcast script --project claudeia --date {{ $json.date }} && ./reddit-analyzer podcast audio --project claudeia --date {{ $json.date }}",
-        "cwd": "/data/ClaudeRedditor"
-      },
-      "type": "n8n-nodes-base.ssh",
-      "typeVersion": 1,
-      "position": [
-        192,
-        -272
-      ],
-      "id": "aa07886c-7995-4bb5-bcfa-9369e3920ffc",
-      "name": "notebooklm_exporter",
-      "credentials": {
-        "sshPrivateKey": {
-          "id": "lHPPSlMCrGsu2TFs",
-          "name": "SSH Seb 01"
-        }
-      }
-    },
-    {
-      "parameters": {
         "chatId": "815566372",
         "text": "=Claude Gazette: \n{{ $json.message }}",
         "additionalFields": {}
@@ -261,8 +240,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        576,
-        -272
+        592,
+        -224
       ],
       "id": "2187dce5-dd0d-4cad-bfbe-ae8f52b83c37",
       "name": "Send a text message",
@@ -276,16 +255,93 @@
     },
     {
       "parameters": {
-        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst stderr = $input.first().json.stderr || '';\nconst code = $input.first().json.code;\n\n// Limpiar stderr: quitar caracteres especiales de Rich\nconst cleanStderr = stderr\n  .replace(/[│╭╮╯╰─┬┴├┤┼]/g, '')  // Quitar caracteres de box drawing\n  .replace(/\\[.*?m/g, '')          // Quitar códigos ANSI\n  .replace(/❱/g, '>')              // Reemplazar flechas\n  .trim();\n\n// Construir mensaje\nlet message = '';\n\nif (code === 0) {\n  message = `✅ Podcast generado correctamente\\n\\n${stdout}`;\n} else {\n  message = `⚠️ Error al generar podcast\\n\\n${cleanStderr.slice(-1000)}`; // Limitar a ultimos 1000 caracteres\n}\n\nreturn [{ json: { message } }];"
+        "jsCode": "const stdout = $input.first().json.stdout || '';\nconst stderr = $input.first().json.stderr || '';\nconst code = $input.first().json.code;\n\n// Limpiar stderr: quitar caracteres especiales de Rich\nconst cleanStderr = stderr\n  .replace(/[│╭╮╯╰─┬┴├┤┼]/g, '')  // Quitar caracteres de box drawing\n  .replace(/\\[.*?m/g, '')          // Quitar códigos ANSI\n  .replace(/❱/g, '>')              // Reemplazar flechas\n  .trim();\n\n// Construir mensaje\nlet message = '';\n\nif (code === 0) {\n  message = `✅ Podcast generado correctamente`;\n} else {\n  message = `⚠️ Error al generar podcast\\n\\n${cleanStderr.slice(-1000)}`; // Limitar a ultimos 1000 caracteres\n}\n\nreturn [{ json: { message } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        384,
-        -272
+        432,
+        -208
       ],
       "id": "b83c3b58-b0fd-4386-bd6f-8b169e73a5a7",
       "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=source .venv/bin/activate && ./reddit-analyzer podcast edit --project claudeia --date {{ $json.date }} && ./reddit-analyzer podcast script --project claudeia --date {{ $json.date }} && \n  ./reddit-analyzer podcast audio --project claudeia --date {{ $json.date }} && mv outputs/podcast/claudeia_{{ $json.date }}_{{ $json.digestId }}_audio.mp3 /data/voice_rec/    ",
+        "cwd": "/data/ClaudeRedditor"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        288,
+        -208
+      ],
+      "id": "aa07886c-7995-4bb5-bcfa-9369e3920ffc",
+      "name": "TTS_exporter",
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "lHPPSlMCrGsu2TFs",
+          "name": "SSH Seb 01"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "08de74a7-4679-4bdc-ba11-1a39aa7b6da9",
+              "leftValue": "={{ $json.hasError }} ",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        64,
+        -80
+      ],
+      "id": "3ef3796b-9966-4422-a37f-8285f2466721",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "815566372",
+        "text": "=Claude Gazette: \n {{ $json.errorMessage }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        -416
+      ],
+      "id": "428ae256-ad64-452c-9083-829862e355d6",
+      "name": "Error generating gazette",
+      "webhookId": "a25db087-0919-4361-83a2-42d04808cb37",
+      "credentials": {
+        "telegramApi": {
+          "id": "6zQnoW92DIzCmR11",
+          "name": "LaBorrachaAlerting_bot"
+        }
+      }
     }
   ],
   "pinData": {
@@ -331,12 +387,7 @@
       "main": [
         [
           {
-            "node": "Mail executor",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "notebooklm_exporter",
+            "node": "If",
             "type": "main",
             "index": 0
           }
@@ -413,17 +464,6 @@
         ]
       ]
     },
-    "notebooklm_exporter": {
-      "main": [
-        [
-          {
-            "node": "Code in JavaScript",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Send a text message": {
       "main": [
         []
@@ -434,6 +474,40 @@
         [
           {
             "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TTS_exporter": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Error generating gazette",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mail executor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "TTS_exporter",
             "type": "main",
             "index": 0
           }
@@ -450,7 +524,7 @@
     "timeSavedPerExecution": 240,
     "errorWorkflow": "8Do_4hTqkLg3hphSMi3jw"
   },
-  "versionId": "6df00337-ab99-46b6-9105-df480fe38b8c",
+  "versionId": "4e95304f-1c3d-4d79-95a2-a17e318f8be2",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "7d27834ec55cdc082d467aa5d99be5b299260987a60a514bec6862ba23ce7aeb"
